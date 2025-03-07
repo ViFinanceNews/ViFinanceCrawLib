@@ -31,9 +31,7 @@ ViFinanceNews Analysis Tool is an advanced financial news analysis system that a
         pip install -r requirements.txt
 
 
-	3.	Set up the database:
-
-        python setup_database.py
+	3.	Using the Library by cd to the project
 
     4. Getting the key:
         API_KEY (from Google Cloud Console) 

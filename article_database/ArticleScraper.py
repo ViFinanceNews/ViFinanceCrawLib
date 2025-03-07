@@ -21,6 +21,10 @@ news_article = {
 }
 """
 class ArticleScraper:
+
+    def __init__(self):
+        return
+    
     @staticmethod
     def scrape_article(url):
         """
@@ -72,7 +76,7 @@ class ArticleScraper:
             return None
 
     @staticmethod
-    def decode_article_obj(article):
+    def decode_article_obj(self, article):
         """
         Decode the NewsArticle.NewsArticle object to data-point
         return: author, title, date_publish, description, main_text, image_url, url, date_download
@@ -90,11 +94,11 @@ class ArticleScraper:
             "date_download": article.date_download.strftime("%Y-%m-%d") if article.date_download is not None else "Unknown",
         }
 
-if __name__ == '__main__':
-   urls = ["https://vnexpress.net/dieu-tri-hoc-them-4851548.html", "https://vnexpress.net/hoc-de-song-hay-hoc-de-thi-4808158.html"]
-   scraper = ArticleScraper()
-   data = scraper.scrape_article("https://vnexpress.net/dieu-tri-hoc-them-4851548.html")
-   print(pprint.pprint(data))
+# if __name__ == '__main__':
+#    urls = ["https://vnexpress.net/dieu-tri-hoc-them-4851548.html", "https://vnexpress.net/hoc-de-song-hay-hoc-de-thi-4808158.html"]
+#    scraper = ArticleScraper()
+#    data = scraper.scrape_article("https://vnexpress.net/dieu-tri-hoc-them-4851548.html")
+#    print(pprint.pprint(data))
 #    datum = scraper.scrape_multiple_articles(urls=urls)
 #    for element in datum:
 #         for article in element.values():

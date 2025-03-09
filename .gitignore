@@ -3,6 +3,7 @@ __pycache__/
 *.pyo
 *.pyd
 .env
+.devcontainer/
 .vscode/
 .idea/
 .DS_Store

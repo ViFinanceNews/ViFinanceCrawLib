@@ -7,8 +7,8 @@ on:
   pull_request:
   workflow_dispatch:  # Allows manual trigger from GitHub Actions UI
 
-jobs:
-  deploy:
+jobs: # the actions this has to do
+  check_the_env:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code

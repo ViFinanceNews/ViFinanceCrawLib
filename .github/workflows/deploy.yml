@@ -9,32 +9,19 @@ on:
 
 jobs:
   deploy:
-    runs-on: ubuntu-latest  # Using a fixed runner instead of matrix
-
+    runs-on: ubuntu-latest
     steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v4
+      - name: Checkout code
+        uses: actions/checkout@v3
 
-      - name: Set Up Environment Variables
+      - name: Set up environment variables
         run: |
-          echo "API_KEY=${{ secrets.API_KEY }}" > .env
-          echo "SEARCH_API_KEY=${{ secrets.SEARCH_API_KEY }}" >> .env
-          echo "SEARCH_ENGINE_ID=${{ secrets.SEARCH_ENGINE_ID }}" >> .env
-        shell: bash
+          echo "API_KEY=${{ secrets.API_KEY }}" >> $GITHUB_ENV
+          echo "SEARCH_API_KEY=${{ secrets.SEARCH_API_KEY }}" >> $GITHUB_ENV
+          echo "SEARCH_ENGINE_ID=${{ secrets.SEARCH_ENGINE_ID }}" >> $GITHUB_ENV
 
-      - name: Validate Environment Variables
+      - name: Run application
         run: |
-          source .env
-          if [ -z "$API_KEY" ]; then echo "❌ API_KEY is missing!"; exit 1; fi
-          if [ -z "$SEARCH_API_KEY" ]; then echo "❌ SEARCH_API_KEY is missing!"; exit 1; fi
-          if [ -z "$SEARCH_ENGINE_ID" ]; then echo "❌ SEARCH_ENGINE_ID is missing!"; exit 1; fi
-          echo "✅ All environment variables are properly set."
-        shell: bash
-
-      - name: Debug (Safe Masked Output)
-        run: |
-          source .env
           echo "🔍 API_KEY starts with: ${API_KEY:0:5}******"
           echo "🔍 SEARCH_API_KEY starts with: ${SEARCH_API_KEY:0:5}******"
           echo "🔍 SEARCH_ENGINE_ID starts with: ${SEARCH_ENGINE_ID:0:5}******"
-        shell: bash

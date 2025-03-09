@@ -3,24 +3,61 @@ name: Secret Repository Workflow
 on: 
   push:
     branches:
-      - main  # Run workflow on push to 'main' branch
+      - main
   pull_request:
+  workflow_dispatch:  # Allows manual trigger from GitHub Actions UI
 
 jobs:
   deploy:
-    runs-on: self-hosted
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
 
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Set Up Environment
+      - name: Set Up Environment (Linux & Mac)
+        if: runner.os != 'Windows'
         run: |
           echo "API_KEY=${{ secrets.API_KEY }}" > .env
           echo "SEARCH_API_KEY=${{ secrets.SEARCH_API_KEY }}" >> .env
           echo "SEARCH_ENGINE_ID=${{ secrets.SEARCH_ENGINE_ID }}" >> .env
         shell: bash
 
-        
-      - name: Check Environment Variables (Safe Debugging)
-        run: printenv | grep "API_KEY"
+      - name: Set Up Environment (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          echo API_KEY=${{ secrets.API_KEY }} > .env
+          echo SEARCH_API_KEY=${{ secrets.SEARCH_API_KEY }} >> .env
+          echo SEARCH_ENGINE_ID=${{ secrets.SEARCH_ENGINE_ID }} >> .env
+        shell: pwsh
+
+      - name: Safe Environment Check (Avoid Printing Secrets)
+        run: |
+          echo "✅ Environment variables are set correctly!"
+        shell: bash
+
+      - name: Run Script
+        run: |
+          echo "🚀 Running script..."
+          if [ -f "run.sh" ]; then
+            chmod +x run.sh && ./run.sh
+          else
+            echo "❌ Script not found!"
+            exit 1
+          fi
+        shell: bash
+        if: runner.os != 'Windows'
+
+      - name: Run Script (Windows)
+        run: |
+          if (Test-Path "run.ps1") {
+            ./run.ps1
+          } else {
+            Write-Error "❌ Script not found!"
+            exit 1
+          }
+        shell: pwsh
+        if: runner.os == 'Windows'

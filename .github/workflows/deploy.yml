@@ -9,55 +9,32 @@ on:
 
 jobs:
   deploy:
-    runs-on: ${{ matrix.os }}
-    strategy:
-      matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ubuntu-latest  # Using a fixed runner instead of matrix
 
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Set Up Environment (Linux & Mac)
-        if: runner.os != 'Windows'
+      - name: Set Up Environment Variables
         run: |
           echo "API_KEY=${{ secrets.API_KEY }}" > .env
           echo "SEARCH_API_KEY=${{ secrets.SEARCH_API_KEY }}" >> .env
           echo "SEARCH_ENGINE_ID=${{ secrets.SEARCH_ENGINE_ID }}" >> .env
         shell: bash
 
-      - name: Set Up Environment (Windows)
-        if: runner.os == 'Windows'
+      - name: Validate Environment Variables
         run: |
-          echo API_KEY=${{ secrets.API_KEY }} > .env
-          echo SEARCH_API_KEY=${{ secrets.SEARCH_API_KEY }} >> .env
-          echo SEARCH_ENGINE_ID=${{ secrets.SEARCH_ENGINE_ID }} >> .env
-        shell: pwsh
-
-      - name: Safe Environment Check (Avoid Printing Secrets)
-        run: |
-          echo "✅ Environment variables are set correctly!"
+          source .env
+          if [ -z "$API_KEY" ]; then echo "❌ API_KEY is missing!"; exit 1; fi
+          if [ -z "$SEARCH_API_KEY" ]; then echo "❌ SEARCH_API_KEY is missing!"; exit 1; fi
+          if [ -z "$SEARCH_ENGINE_ID" ]; then echo "❌ SEARCH_ENGINE_ID is missing!"; exit 1; fi
+          echo "✅ All environment variables are properly set."
         shell: bash
 
-      - name: Run Script
+      - name: Debug (Safe Masked Output)
         run: |
-          echo "🚀 Running script..."
-          if [ -f "run.sh" ]; then
-            chmod +x run.sh && ./run.sh
-          else
-            echo "❌ Script not found!"
-            exit 1
-          fi
+          source .env
+          echo "🔍 API_KEY starts with: ${API_KEY:0:5}******"
+          echo "🔍 SEARCH_API_KEY starts with: ${SEARCH_API_KEY:0:5}******"
+          echo "🔍 SEARCH_ENGINE_ID starts with: ${SEARCH_ENGINE_ID:0:5}******"
         shell: bash
-        if: runner.os != 'Windows'
-
-      - name: Run Script (Windows)
-        run: |
-          if (Test-Path "run.ps1") {
-            ./run.ps1
-          } else {
-            Write-Error "❌ Script not found!"
-            exit 1
-          }
-        shell: pwsh
-        if: runner.os == 'Windows'

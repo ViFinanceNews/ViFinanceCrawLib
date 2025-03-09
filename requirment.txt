@@ -2,3 +2,6 @@ google.generativeai
 os
 requests
 BeautifulSoup  
+news-please>=1.6.13
+pyodbc
+httpx

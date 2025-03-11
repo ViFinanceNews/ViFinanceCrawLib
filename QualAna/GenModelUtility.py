@@ -67,6 +67,53 @@ class GenModelUtility:
         except Exception as e:
             print(f"❌ Error in generate_search_queries: {e}")
             return []
+    
+    def generate_bias_analysis(self, article: str):
+            """
+            Generate a qualitative bias and logical fallacy analysis on the article,
+            specifying the types of bias and logical fallacies to focus on.
+            
+            Parameters:
+                article (str): The article content to analyze.
+    
+            Returns:
+                str: The formatted prompt for LLM analysis.
+            """
+          
+            prompt = f"""
+                Bạn là một nhà báo phân tích phản biện, chuyên đánh giá độ chính xác và khách quan của thông tin.  
+                
+                Hãy phân tích bài viết sau để xác định các thiên kiến và lỗi lập luận có thể có.  
+                - **Không chỉ dựa vào từ khóa**, hãy đánh giá ngữ cảnh và cách lập luận để nhận diện thiên kiến hoặc lỗi logic.  
+                - Nếu bài viết trung lập, hãy kết luận trung lập. Nếu có thiên kiến hoặc lỗi lập luận, hãy đánh giá mức độ ảnh hưởng.  
+                
+                Xuất kết quả theo định dạng sau, chỉ bao gồm nội dung phân tích mà không thêm giải thích hoặc biểu cảm dư thừa:  
+
+                - **Loại thiên kiến:** [Chính trị, giới tính, văn hóa, thiên kiến xác nhận, v.v.]  
+                - **Mức độ ảnh hưởng:** [Nhẹ, vừa, nghiêm trọng]  
+                - **Phân tích ngắn gọn:** [Giải thích thiên kiến trong tối đa 200 từ, dựa trên ngữ cảnh và lập luận của bài viết]  
+
+                ---  
+                **Câu hỏi phản biện để giúp người đọc có góc nhìn khách quan hơn:**  
+                (Hãy đưa ra 3–5 câu hỏi theo phương pháp Socrates, khuyến khích người đọc suy nghĩ sâu hơn về lập luận trong bài viết)  
+
+                Bài viết cần phân tích:  
+                \"\"\"  
+                {article}  
+                \"\"\"
+            """
+            try:
+                response = self.model.generate_content(prompt)
+                if not hasattr(response, "text") or not response.text:
+                    print("⚠️ Warning: Empty response from AI model.")
+                    return []
+
+                analysis = response.text
+                return analysis
+            
+            except Exception as e:
+                print(f"❌ Error in generate_search_queries: {e}")
+                return []
 
     def understanding_the_question(self, query):
         """

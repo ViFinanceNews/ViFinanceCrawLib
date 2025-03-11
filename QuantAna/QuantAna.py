@@ -14,7 +14,6 @@ from sentence_transformers import SentenceTransformer, util
 class QuantAnaIns:
 
     def __init__(self):
-        print("QuantAna initialized")
         self.sentence_transformer_name= "keepitreal/vietnamese-sbert"
         self.sentence_transformer_model = SentenceTransformer(self.sentence_transformer_name)
         self.sentiment_model_name = "tabularisai/multilingual-sentiment-analysis"

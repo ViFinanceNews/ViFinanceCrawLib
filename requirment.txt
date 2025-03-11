@@ -5,3 +5,11 @@ BeautifulSoup
 news-please>=1.6.13
 pyodbc
 httpx
+textacy
+regex
+scikit-learn
+detoxify
+sentence_transformers
+transformers
+torch
+tf_keras

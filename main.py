@@ -8,8 +8,8 @@ logging.basicConfig(filename="./logging/pipeline.log", level=logging.ERROR,
 
 start_time = time.time()
 quantAna = QuantAnaIns()
-testStr = "Oil prices are being manipulated by large companies"
-testStr2 = "Although oil prices are currently being manipulated, they are still under government control"
+testStr = "Giá dầu tăng nhanh do các tập đoàn thao túng"
+testStr2 = "Giá dầu những năm nay đang có xu hướng tăng nhanh do nhiều điều kiện tác động"
 # toxicity_res = quantAna.detect_toxicity(testStr)
 # sentiment_ana = quantAna.sentiment_analysis(testStr)
 semantic_sim = quantAna.compute_semantic_similarity(testStr, testStr2)

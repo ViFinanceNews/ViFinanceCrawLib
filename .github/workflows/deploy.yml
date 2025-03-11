@@ -14,9 +14,6 @@ jobs: # the actions this has to do
       - name: Checkout code
         uses: actions/checkout@v3
       
-      - name: Read the env variable
-        run:  echo "MY VARIABLE VALUE TEST is ${{vars.TESTING_VAR}}"
-
       - name: Set up environment variables
         run: |
           echo "API_KEY=${{ secrets.API_KEY }}" >> $GITHUB_ENV

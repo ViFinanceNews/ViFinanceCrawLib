@@ -14,8 +14,19 @@ jobs: # the actions this has to do
       - name: Checkout code
         uses: actions/checkout@v3
       
+      - name: Read the env variable
+        run:  echo "MY VARIABLE VALUE TEST is ${{vars.TESTING_VAR}}"
+
       - name: Set up environment variables
         run: |
+          echo "DATABASE_NAME=${{ vars.DATABASE_NAME }}" >> $GITHUB_ENV
+          echo "DB_READ_USER=${{ vars.DB_READ_USER }}" >> $GITHUB_ENV
+          echo "DB_WRITE_USER=${{ vars.DB_WRITE_USER }}" >> $GITHUB_ENV
+          
+          echo "DB_READ_PASS=${{ secrets.DB_READ_PASS }}" >> $GITHUB_ENV
+          echo "DB_WRITE_PASS=${{ secrets.DB_WRITE_PASS }}" >> $GITHUB_ENV
+          
+          
           echo "API_KEY=${{ secrets.API_KEY }}" >> $GITHUB_ENV
           echo "SEARCH_API_KEY=${{ secrets.SEARCH_API_KEY }}" >> $GITHUB_ENV
           echo "SEARCH_ENGINE_ID=${{ secrets.SEARCH_ENGINE_ID }}" >> $GITHUB_ENV

@@ -13,10 +13,7 @@ jobs: # the actions this has to do
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
-      
-      - name: Read the env variable
-        run:  echo "MY VARIABLE VALUE TEST is ${{vars.TESTING_VAR}}"
-
+  
       - name: Set up environment variables
         run: |
           echo "DATABASE_NAME=${{ vars.DATABASE_NAME }}" >> $GITHUB_ENV

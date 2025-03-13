@@ -4,10 +4,8 @@ from Summarizer.newsProcessor import NewsProcessor
 
 class app:
     def __init__(self, url):
-        self.url = url
-        self.article = ArticleScraper(url)
         self.db = Database()
-        self.news_processor = NewsProcessor(self.article)
+        self.news_processor = NewsProcessor(ArticleScraper(url))
     
     def store_article(self):
         self.db.insert_record("article",self.news_processor.transform_article())

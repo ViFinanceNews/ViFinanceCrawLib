@@ -55,7 +55,6 @@ class QualAnaIns():
         analysis = self.utility.generate_bias_analysis(article)
         return analysis
 
-
     def test(self):
         tc = TextCleaning()
         test_text = """

@@ -6,7 +6,6 @@ from newsplease import NewsPlease
 # Load environment variables from .env file
 load_dotenv("news.env")
 
-# Configure your key
 api_key = os.getenv('API_KEY')
 if not api_key:
     raise ValueError("No API_KEY found in environment variables")

@@ -11,7 +11,7 @@ app = ScrapeAndTagArticles()
 
 articles_tag = app.search_and_scrape("Vietnam Economy in the first-fews month of 2025")
 for article in articles_tag:
-    pprint(article)
+    print(article)
 
 
 end_time = time.time()

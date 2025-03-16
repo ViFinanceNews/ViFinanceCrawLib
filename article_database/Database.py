@@ -1,4 +1,6 @@
 import pyodbc # type: ignore
+import os
+from dotenv import load_dotenv
 
 class Database:
     def __init__(self, connection_string):
@@ -67,7 +69,6 @@ class Database:
         except pyodbc.Error as e:
             print(f"❌ Error creating table '{table_name}': {e}")
 
-
     def check_table_exists(self, schema_name, table_name):
         """
         Checks if a table exists in an Azure SQL Database.
@@ -102,7 +103,6 @@ class Database:
         except Exception as e:
             print(f"❌ Error checking table existence: {e}")
             return False  # Assume table does not exist if an error occurs
-
 
     def insert_record(self, table_name, record):
         """
@@ -176,28 +176,60 @@ class Database:
             print(f"✅ {len(records)} records inserted successfully into '{table_name}'.")
         except pyodbc.Error as e:
             print(f"❌ Bulk insert failed: {e}")
-            
+
+    def execute_query(self, query, params=None, fetch_one=False, fetch_all=False, commit=False):
+        """
+        Execute any SQL query with optional parameters.
+
+        Parameters:
+        - query (str): The SQL query string.
+        - params (tuple/list): Parameters for the query (optional).
+        - fetch_one (bool): Whether to fetch one result (for SELECT).
+        - fetch_all (bool): Whether to fetch all results (for SELECT).
+        - commit (bool): Whether to commit the transaction (for INSERT/UPDATE/DELETE).
+
+        Returns:
+        - Query result(s) if fetch_one or fetch_all is True, else None.
+        """
+        if not self.conn:
+            print("⚠️ No database connection.")
+            return None
+
+        try:
+            cursor = self.conn.cursor()
+            if params:
+                cursor.execute(query, params)
+            else:
+                cursor.execute(query)
+
+            result = None
+            if fetch_one:
+                result = cursor.fetchone()
+            elif fetch_all:
+                result = cursor.fetchall()
+
+            if commit:
+                self.conn.commit()
+
+            cursor.close()
+            return result
+
+        except pyodbc.Error as e:
+            print(f"❌ Error executing query: {e}")
+            return None
+
     def close(self):
         """Closes the database connection."""
         if self.conn:
             self.conn.close()
             print("🔌 Connection closed.")
-
-# Example usage
-if __name__ == "__main__":
-    connection_str = "Driver={ODBC Driver 18 for SQL Server};Server=tcp:vifinancenews.database.windows.net,1433;Database=Vietnam_Finance_News;Uid=ViFinanceNews;Pwd={ViFinanceNew#2025};Encrypt=yes;TrustServerCertificate=no;Connection Timeout=30;"
     
-    db = Database(connection_str)
 
-    sample_article = {
-        "title": "Vietnam's Economic Growth in 2025",
-        "text": "Vietnam's economy is projected to grow significantly in 2025...",
-        "date": "2025-02-28",
-        "authors": ["John Doe"],
-        "source": "example.com",
-        "url": "https://example.com/vietnam-economy-2025"
-    }
-    db.connect()
-    db.create_table()
-    db.insert_article(sample_article)
-    db.close()
+
+# # Example usage
+# if __name__ == "__main__":
+#     load_dotenv(".devcontainer/devcontainer.env")
+#     connection_str = os.getenv("CONNECTION_STR")
+#     db = Database(connection_str)
+#     db.connect()
+#     db.close()

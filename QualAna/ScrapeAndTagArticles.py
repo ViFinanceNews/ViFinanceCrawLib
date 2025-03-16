@@ -17,7 +17,8 @@ class ScrapeAndTagArticles:
         
         pp = pprint.PrettyPrinter(indent=4)
         # Step 1: Scrape articles
-        articles = self.utility.search_web(query, num_results=10)
+        articles = self.utility.search_web(query, num_results=5)
+        print("search-done")
         self.db.connect()
         for article in articles:
             content = article["main_text"]

@@ -1,7 +1,7 @@
 google.generativeai 
 os
 requests
-BeautifulSoup  
+beautifulsoup4
 news-please>=1.6.13
 pyodbc
 httpx
@@ -13,3 +13,4 @@ sentence_transformers
 transformers
 torch
 tf_keras
+dotenv

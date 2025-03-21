@@ -6,7 +6,7 @@
 
 """
 
-from article_database.TextCleaning import TextCleaning as tc
+from ViFinanceCrawLib.article_database.TextCleaning import TextCleaning as tc
 from transformers import pipeline
 import torch
 from detoxify import Detoxify

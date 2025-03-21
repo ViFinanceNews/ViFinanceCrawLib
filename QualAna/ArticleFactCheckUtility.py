@@ -7,10 +7,15 @@ import google.generativeai as genai
 import os
 from dotenv import load_dotenv
 import requests
+import time
+from typing import List, Optional
 from bs4 import BeautifulSoup  
-from article_database.ArticleScraper import ArticleScraper
-from article_database.SearchEngine import SearchEngine
-from article_database.TitleCompleter import TitleCompleter
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from tqdm import tqdm  # Optional: For progress visualization
+from ViFinanceCrawLib.article_database.ArticleScraper import ArticleScraper
+from ViFinanceCrawLib.article_database.SearchEngine import SearchEngine
+from ViFinanceCrawLib.article_database.SearchEngine import SearchEngine
+from ViFinanceCrawLib.article_database.TitleCompleter import TitleCompleter
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 
@@ -22,7 +27,7 @@ class ArticleFactCheckUtility():
         self.model_name = model_name
         self.model = genai.GenerativeModel(model_name)
         self.tc = TitleCompleter()
-        self.search_engine  =  SearchEngine(os.getenv("SEARCH_API_KEY_2"), os.getenv("SEARCH_ENGINE_ID_2"))
+        self.search_engine  =  SearchEngine(os.getenv("SEARCH_API_KEY"), os.getenv("SEARCH_ENGINE_ID"))
         self.article_scraper = ArticleScraper()
         return
         
@@ -35,7 +40,50 @@ class ArticleFactCheckUtility():
         claims = response.text.split('\n')
         claims = [claim.strip() for claim in claims if claim.strip()]  # Clean up
         return claims
+    
+    def fact_check_article_using_query(self, article_text):
+        """
+        Fact-check an article by generating neutral, thought-provoking search queries
+        based on its content.
 
+        Parameters:
+        - article_text (str): The full text of the article to fact-check.
+
+        Returns:
+        - List of generated Vietnamese search queries.
+        """
+        # Step 1: Create a prompt to extract key claims/questions from article
+        prompt = f"""Identify keywords and concepts from the following article. 
+                    Using this article, generate neutral, thought-provoking questions that encourage 
+                    discussion without assuming a particular stance. Each question must be between 
+                    10 and 50 words long. 
+
+                    You must return the questions in the following format:
+
+                    Query 1: <question in Vietnamese>
+                    Query 2: <question in Vietnamese>
+                    ...
+
+                    Do not include any other text.
+
+                    Article: {article_text}
+                    """
+        # Step 2: Get response from model
+        response = self.model.generate_content(prompt)
+
+        # Step 3: Process and clean the output
+        raw_output = response.text.split('\n')
+        search_queries = []
+        for line in raw_output:
+            line = line.strip()
+            if line.startswith("Query"):
+                # Extract after 'Query X:'
+                query_text = line.split(":", 1)[1].strip()
+                if query_text:
+                    search_queries.append(query_text)
+
+        return search_queries
+    
     def search_web(self, query, num_results=5):
         tc = self.tc
         searchEngine = self.search_engine
@@ -66,6 +114,61 @@ class ArticleFactCheckUtility():
                 print(f"❌ Error processing article {article['link']}: {e}")
         return valid_articles
     
+    def search_web_fast(self, query, num_results=5):
+        """
+        Main method: Search articles and scrape them in parallel.
+        """
+        articles = self.search_engine.search(query, num=num_results)
+        valid_articles = self.scrape_articles_parallel(articles, batch_size=num_results)
+        return valid_articles
+
+    def scrape_articles_parallel(self, articles, batch_size=5):
+        """
+        Helper method: Scrape articles in parallel.
+        Scrape articles concurrently in batches.
+        """
+        valid_articles = []
+
+        with ThreadPoolExecutor(max_workers=batch_size) as executor:
+            futures = [executor.submit(self.process_single_article, article) for article in articles]
+
+            for future in tqdm(as_completed(futures), total=len(futures), desc="Scraping Articles"):
+                result = future.result()
+                if result:
+                    valid_articles.append(result)
+
+        return valid_articles
+
+    def process_single_article(self, article):
+        """
+        Helper method: Process a single article.
+        Process a single article: Scrape, validate, and format.
+        """
+        try:
+            if not article.get("link"):
+                return None  # Skip articles with no links
+
+            original_title = article["title"]
+
+            # Scrape article content
+            article_data = self.article_scraper.scrape_article(article["link"])
+
+            # Filter invalid articles
+            if (
+                not article_data["main_text"]
+                or article_data["main_text"] == "No content available"
+                or article_data["author"] == "Unknown"
+            ):
+                return None
+
+            # Complete title after filtering
+            article_data["title"] = self.tc.complete_title(original_title=original_title, article=article)
+            return article_data
+
+        except Exception as e:
+            print(f"❌ Error processing article {article.get('link')}: {e}")
+            return None
+
     def analyze_evidence(self, statement, evidence):
         # Cretability metric - https://rusi-ns.ca/a-system-to-judge-information-reliability/
         """
@@ -302,39 +405,6 @@ class ArticleFactCheckUtility():
             print(f"Error in synthesis and summarization method: {e}")
             return None
     
-    def search_web(self, query, num_results=5):
-        """
-        Searches the web for relevant articles based on the query.
-        Filters out invalid articles and completes article titles.
-        """
-        articles = self.search_engine.search(query, num=num_results)
-        valid_articles = []
-        for article in articles:
-            try:
-                if not article.get("link"):
-                    continue  # Skip articles with no links
-
-                original_title = article["title"]
-                # Scrape article content
-
-                link = article["link"]
-                article_data = ArticleScraper.scrape_article(link)
-
-                if (
-                    not article_data["main_text"]
-                    or article_data["main_text"] == "No content available"
-                    or article_data["author"] == "Unknown"
-                ):
-                    continue  # Skip invalid articles
-
-                # ✅ Complete title AFTER filtering
-                article_data["title"] = self.tc.complete_title(original_title=original_title, article=article)
-                valid_articles.append(article_data)
-
-            except Exception as e:
-                print(f"❌ Error processing article {article['link']}: {e}")
-        return valid_articles
-
     def filter_rank(self,query, valid_articles):
         corpus = query + valid_articles
         # Step 1: TF-IDF Vectorization
@@ -394,7 +464,7 @@ class ArticleFactCheckUtility():
 
         # Generate content from model
         response = self.model.generate_content(prompt)
-        print("res: ",response.text)
+        #print("res: ",response.text)
         raw_tags = response.text.strip().split(',')
 
         # Clean up tags
@@ -414,5 +484,161 @@ class ArticleFactCheckUtility():
 
         return tags
     
-    
+    def generate_tags_batch(self, articles: List[str], predefined_tags: Optional[List[str]] = None) -> List[List[str]]:
+        batch_size = len(articles)
+        all_tags = []
 
+        # Create the prompt for batch processing
+        article_text = ''.join([f'Bài viết {i+1}: {article}\n' for i, article in enumerate(articles)])
+
+        if predefined_tags:
+            predefined_str = ', '.join(predefined_tags)
+            prompt = (
+                "cho các bài viết sau:\n\n"
+                f"{article_text}\n"
+                "Hãy tạo một danh sách thẻ [CHỈ ĐƯỢC CÓ ĐÚNG 4 THẺ] cho mỗi bài viết với yêu cầu sau:\n"
+                "- Các thẻ phải bao gồm nội dung chính của bài viết và không được trùng lặp với nhau.\n"
+                f"- Chỉ chọn đúng 1 thẻ từ danh sách sau: {predefined_str}, và tạo thêm 1 đến 3 thẻ liên quan khác.\n"
+                "- Độ dài của một thẻ chỉ được tối đa 3 từ.\n\n"
+                "Xuất kết quả theo định dạng sau, chỉ bao gồm nội dung phân tích mà không thêm giải thích hoặc biểu cảm dư thừa:\n"
+                "Bài viết 1: thẻ1, thẻ2, thẻ3, thẻ4\n"
+                "Bài viết 2: thẻ1, thẻ2, thẻ3, thẻ4\n"
+                "..."
+            )
+        else:
+            prompt = (
+                "cho các bài viết sau:\n\n"
+                f"{article_text}\n"
+                "Hãy tạo một danh sách thẻ [CHỈ ĐƯỢC CÓ ĐÚNG 4 THẺ] cho mỗi bài viết với yêu cầu sau:\n"
+                "- Các thẻ phải bao gồm nội dung chính của bài viết và không được trùng lặp với nhau.\n"
+                "- Độ dài của một thẻ chỉ được tối đa 3 từ.\n\n"
+                "Xuất kết quả theo định dạng sau, chỉ bao gồm nội dung phân tích mà không thêm giải thích hoặc biểu cảm dư thừa:\n"
+                "Bài viết 1: thẻ1, thẻ2, thẻ3, thẻ4\n"
+                "Bài viết 2: thẻ1, thẻ2, thẻ3, thẻ4\n"
+                "..."
+            )
+        # Generate content from model
+        response = self.model.generate_content(prompt)
+        
+        raw_responses = response.text.strip().split('\n')
+
+        # Process each article's tags
+        for raw_tags in raw_responses:
+            tags = []
+            if ':' in raw_tags:
+                _, tag_str = raw_tags.split(':', 1)
+                raw_tag_list = tag_str.strip().split(',')
+                for tag in raw_tag_list:
+                    cleaned_tag = tag.strip()
+                    if cleaned_tag:  # Avoid empty tags
+                        tags.append(cleaned_tag)
+
+                # Optional: Ensure at least 1 predefined tag if required
+                if predefined_tags:
+                    predefined_lower = [t.lower() for t in predefined_tags]
+                    has_predefined = any(tag.lower() in predefined_lower for tag in tags)
+
+                    if not has_predefined and predefined_tags:
+                        fallback_tag = predefined_tags[0]  # pick the first predefined tag
+                        tags.insert(0, fallback_tag)
+
+            all_tags.append(tags)
+
+        return all_tags
+
+    def process_articles_in_batches(self, articles: List[str], predefined_tags: Optional[List[str]] = None, batch_size: int = 5):
+        all_results = []
+        total_articles = len(articles)
+        for i in range(0, total_articles, batch_size):
+            batch = articles[i:i + batch_size]
+            batch_results = self.generate_tags_batch(batch, predefined_tags)
+            all_results.extend(batch_results)
+
+            # Implement rate limiting
+            if (i + batch_size) < total_articles:
+                time.sleep(6)  # Sleep for 6 seconds to maintain ~10 RPM
+
+        return all_results
+
+    def choose_the_batch_size(self,article_list):
+        """
+            Input: List of Article
+            Output: the Ideal batch-size
+            Dynamically decide the batch size based on the number of articles.
+            If the number of articles is less than or equal to 5, process them all at once.
+            Otherwise, process them in batches of 5.
+            This function assumes that the `article_util` module has a method `process_articles_in_batches`
+            that can handle the processing of articles in batches.
+        """
+        total_articles = len(article_list)
+        
+        if total_articles == 0:
+            print("No articles to process!")
+            return 0
+        # Dynamic batch size decision:
+        if total_articles <= 5:
+            batch_size = total_articles  # Put all articles in one batch
+        else:
+            batch_size = 5  # Max allowed batch size
+        
+        return batch_size
+    
+    def main(self):
+        articles = [
+        """
+        **Bài viết 1: Tình hình kinh tế Việt Nam năm 2024**
+
+        Năm 2024, kinh tế Việt Nam tiếp tục phát triển mạnh mẽ với GDP tăng trưởng 6,5%. Các ngành công nghiệp chủ chốt như sản xuất, dịch vụ và nông nghiệp đều ghi nhận sự tăng trưởng đáng kể. Đặc biệt, ngành công nghệ thông tin và truyền thông đã đóng góp lớn vào nền kinh tế, với nhiều startup công nghệ đạt được thành công trên thị trường quốc tế. Tuy nhiên, Việt Nam cũng đối mặt với thách thức về biến đổi khí hậu và cần có chiến lược phát triển bền vững để duy trì đà tăng trưởng.
+        """,
+        """
+        **Bài viết 2: Sự phát triển của giáo dục trực tuyến tại Việt Nam**
+
+        Trong những năm gần đây, giáo dục trực tuyến đã trở thành xu hướng tại Việt Nam. Với sự phát triển của công nghệ và internet, nhiều khóa học trực tuyến chất lượng cao đã được triển khai, giúp người học tiếp cận kiến thức một cách linh hoạt và tiết kiệm chi phí. Các nền tảng như Edtech Vietnam, Topica đã thu hút hàng triệu người dùng. Tuy nhiên, việc đảm bảo chất lượng và kiểm định các khóa học trực tuyến vẫn là một thách thức lớn.
+        """,
+        """
+        **Bài viết 3: Du lịch bền vững tại Việt Nam**
+
+        Việt Nam sở hữu nhiều danh lam thắng cảnh và di sản văn hóa phong phú, thu hút hàng triệu du khách mỗi năm. Tuy nhiên, du lịch ồ ạt đã gây ra nhiều tác động tiêu cực đến môi trường và cộng đồng địa phương. Do đó, du lịch bền vững đang trở thành xu hướng, với việc khuyến khích du khách tham gia vào các hoạt động bảo vệ môi trường, tôn trọng văn hóa địa phương và hỗ trợ kinh tế cho cộng đồng bản địa.
+        """,
+        """
+        **Bài viết 4: Ứng dụng trí tuệ nhân tạo trong y tế Việt Nam**
+
+        Trí tuệ nhân tạo (AI) đang được ứng dụng rộng rãi trong lĩnh vực y tế tại Việt Nam. Các bệnh viện và trung tâm y tế đã sử dụng AI để chẩn đoán hình ảnh, dự đoán bệnh tật và quản lý hồ sơ bệnh án. Ví dụ, Bệnh viện Bạch Mai đã triển khai hệ thống AI giúp chẩn đoán sớm bệnh ung thư phổi, cải thiện hiệu quả điều trị và giảm chi phí cho bệnh nhân. Tuy nhiên, việc đào tạo nhân lực và đảm bảo an toàn dữ liệu là những thách thức cần được giải quyết.
+        """,
+        """
+        **Bài viết 5: Phát triển năng lượng tái tạo ở Việt Nam**
+
+        Trước nhu cầu năng lượng ngày càng tăng và áp lực giảm phát thải khí nhà kính, Việt Nam đã đầu tư mạnh mẽ vào năng lượng tái tạo. Các dự án điện mặt trời và điện gió đã được triển khai tại nhiều tỉnh thành, đặc biệt là ở miền Trung và miền Nam. Chính phủ đặt mục tiêu đến năm 2030, năng lượng tái tạo sẽ chiếm 30% tổng công suất điện quốc gia. Tuy nhiên, việc tích hợp năng lượng tái tạo vào lưới điện và đảm bảo ổn định cung cấp điện là những thách thức cần được quan tâm.
+        """,
+        """
+        **Bài viết 6: Thực trạng và giải pháp cho giao thông đô thị tại Hà Nội**
+
+        Hà Nội, thủ đô của Việt Nam, đang đối mặt với vấn đề ùn tắc giao thông nghiêm trọng. Sự gia tăng nhanh chóng của số lượng xe cá nhân, hạ tầng giao thông chưa đáp ứng kịp và ý thức tham gia giao thông của người dân còn hạn chế là những nguyên nhân chính. Để giải quyết vấn đề này, thành phố đã triển khai nhiều giải pháp như phát triển hệ thống giao thông công cộng, xây dựng các tuyến đường vành đai và áp dụng công nghệ thông tin trong quản lý giao thông.
+        """,
+        """
+        **Bài viết 7: Vai trò của phụ nữ trong kinh tế Việt Nam hiện đại**
+
+        Phụ nữ Việt Nam ngày càng khẳng định vai trò quan trọng trong nền kinh tế. Họ không chỉ tham gia vào lực lượng lao động mà còn giữ nhiều vị trí lãnh đạo trong các doanh nghiệp và tổ chức. Các chương trình hỗ trợ khởi nghiệp cho phụ nữ đã giúp nhiều doanh nhân nữ thành công. Tuy nhiên, phụ nữ vẫn đối mặt với nhiều thách thức như chênh lệch thu nhập, định kiến giới và trách nhiệm gia đình.
+        """,
+        """
+        **Bài viết 8: Ảnh hưởng của mạng xã hội đến giới trẻ Việt Nam**
+
+        Mạng xã hội đã trở thành một phần không thể thiếu trong cuộc sống của giới trẻ Việt Nam. Nó mang lại nhiều lợi ích như kết nối, chia sẻ thông tin và giải trí. Tuy nhiên, việc sử dụng mạng xã hội quá mức cũng gây ra nhiều vấn đề như nghiện internet, giảm tương tác xã hội thực tế và ảnh hưởng đến sức khỏe tâm lý. Do đó, cần có sự hướng dẫn và giáo dục để giới trẻ sử dụng mạng xã hội một cách lành mạnh và hiệu quả.
+        """,
+        """
+        **Bài viết 9: Bảo tồn văn hóa truyền thống trong thời kỳ hội nhập**
+
+        Trong bối cảnh hội nhập quốc tế, việc bảo tồn và phát huy văn hóa truyền thống là một thách thức lớn đối với Việt Nam. Nhiều giá trị văn hóa đang dần bị mai một do ảnh hưởng của văn hóa ngoại lai và sự thay đổi của xã hội. Các chương trình giáo dục, lễ hội truyền thống và hoạt động cộng đồng đã được tổ chức nhằm giữ gìn và truyền bá văn hóa dân tộc cho thế hệ trẻ.
+        """,
+        """
+        **Bài viết 10: Tác động của biến đổi khí hậu đến nông nghiệp Việt Nam**
+
+        Biến đổi khí hậu đang ảnh hưởng nghiêm trọng đến nông nghiệp Việt Nam. Hiện tượng thời tiết cực đoan, mực nước biển dâng và sự thay đổi của mùa vụ đã gây ra nhiều khó khăn cho nông dân. Để thích ứng, nhiều biện pháp đã được áp dụng như chuyển đổi cơ cấu cây trồng, áp dụng công nghệ nông nghiệp thông minh và xây dựng hệ thống thủy lợi bền vững. Tuy nhiên, cần có sự hỗ trợ từ chính phủ và cộng đồng quốc tế để đảm bảo an ninh lương thực và sinh kế cho người dân.
+        """
+        ]
+        result = self.process_articles_in_batches(articles, batch_size=5)
+        print(result)
+        # print(type(result)) # a list of list
+        # for i, tags in enumerate(result):
+        #     print(f"Article {i+1} Tags: {', '.join(tags)}")
+        return

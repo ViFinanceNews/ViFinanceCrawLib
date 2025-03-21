@@ -66,5 +66,3 @@ class ScrapeAndTagArticles:
         self.db.close()
         print("✅ Done processing articles and tags.")
         return articles 
-
- 

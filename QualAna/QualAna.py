@@ -7,11 +7,11 @@ class QualAnaIns():
     def __init__(self):
         self.utility = ArticleFactCheckUtility()
 
-    def fact_check(self, statement):
+    def fact_check(self, article):
         """Performs the fact-checking process."""
-        query = self.utility.generate_search_queries(statement)
+        query = self.utility.fact_check_article_using_query(article)
         all_evidence = []
-        search_results = self.utility.search_web(query)
+        search_results = self.utility.search_web_fast(query)
         for result in search_results:
             all_evidence.append(
                 f"Source: {result['title']}\n"
@@ -23,14 +23,14 @@ class QualAnaIns():
         ranked_evidence = self.utility.filter_rank(query=query,valid_articles= all_evidence)
         evidence_string = "\n\n".join(ranked_evidence)
 
-        analysis_results = self.utility.analyze_evidence(statement, evidence_string)
+        analysis_results = self.utility.analyze_evidence(article, evidence_string)
         return analysis_results
 
     def question_and_answer(self, query):
-        "Answering a question or query"
+        "Answering a question or query - can be use for generate the summary of the search"
         with concurrent.futures.ThreadPoolExecutor() as executor:
             future1 = executor.submit(self.utility.understanding_the_question, query)
-            future2 = executor.submit(self.utility.search_web, query=query)
+            future2 = executor.submit(self.utility.search_web_fast, query=query)
             
             reasonings = future1.result()
             while not future2.done():
@@ -56,6 +56,7 @@ class QualAnaIns():
 
     def test(self):
         tc = TextCleaning()
+        # Article Source: Vietcetera
         test_text = """
             Nếu là dân văn phòng, hẳn bạn đã quen thuộc với cảm giác tâm trạng xuống dốc vào tầm 2-3 giờ chiều.
 

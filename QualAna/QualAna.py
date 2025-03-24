@@ -1,6 +1,4 @@
 from .ArticleFactCheckUtility import ArticleFactCheckUtility
-import concurrent.futures
-import time
 from ..article_database.TextCleaning import TextCleaning
 class QualAnaIns():
 
@@ -26,28 +24,6 @@ class QualAnaIns():
         analysis_results = self.utility.analyze_evidence(article, evidence_string)
         return analysis_results
 
-    def question_and_answer(self, query):
-        "Answering a question or query - can be use for generate the summary of the search"
-        with concurrent.futures.ThreadPoolExecutor() as executor:
-            future1 = executor.submit(self.utility.understanding_the_question, query)
-            future2 = executor.submit(self.utility.search_web_fast, query=query)
-            
-            reasonings = future1.result()
-            while not future2.done():
-                time.sleep(0.1)  # Small delay to prevent CPU overuse
-            evidences = future2.result()
-            all_evidences = []
-            for evidence in evidences:
-                all_evidences.append(
-                    f"Source: {evidence['title']}\n"
-                    f"Author: {evidence['author']}\n"
-                    f"URL: {evidence['url']}\n"
-                    f"Snippet: {evidence['main_text']}\n"
-                )
-        
-        answer = self.utility.synthesize_and_summarize(query=query, reasoning=reasonings, evidence=all_evidences)
-        return(answer)
-                  
     def bias_analysis(self, article):
         if not article.strip():  # Check if article is empty or only contains whitespace
             return "⚠️ Bài viết không có nội dung. Vui lòng cung cấp bài viết hợp lệ để phân tích."
@@ -99,10 +75,8 @@ class QualAnaIns():
             Bắt đầu ngày với thói quen lành mạnh: Tập thể dục nhẹ, không bỏ bữa sáng để tránh sụt giảm năng lượng vào chiều.
             Làm việc theo chu kỳ ngắn (pomodoro): Chia công việc thành các phiên 25-45 phút để tối ưu hiệu suất
             """
-        
+
         # result = self.fact_check(test_text)
-        predefined = ["Technology", "Đời sống văn phòng", "tâm lý học", "sức khỏe"]
-        result = self.utility.generate_tags(test_text, predefined)
-        print(result)
+        # result = self.bias_analysis(test_text)
 
 

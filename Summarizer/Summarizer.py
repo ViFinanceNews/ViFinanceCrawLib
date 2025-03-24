@@ -14,7 +14,10 @@ from sagemaker.huggingface import HuggingFaceModel
 from transformers import AutoTokenizer
 import os
 import json
+import concurrent.futures
+import time
 import importlib.resources
+from QualAna.ArticleFactCheckUtility import ArticleFactCheckUtility
 
 class Summarizer:
     def __init__(self, stopword_file="vietnamese-stopwords-dash.txt", extractive_model="Fsoft-AIC/videberta-base", 
@@ -97,6 +100,8 @@ class Summarizer:
         load_dotenv(".devcontainer/devcontainer.env")
         genai.configure(api_key=os.getenv("API_KEY"))
         self.abstractive_model = genai.GenerativeModel(abstractive_model)
+
+        self.qa_utility = ArticleFactCheckUtility()
         return
 
     def pre_processing(self, text):
@@ -244,6 +249,45 @@ class Summarizer:
         summary = self.abstractive_summarize(extractive_output)
         return summary
     
+    def question_and_answer(self, query, evidence=None):
+        """
+        Answer a question based on either provided evidence or by searching online.
+        If evidence is provided, skip the search. Otherwise, perform the search.
+        """
+
+        # === Step 1: Understand the question ===
+        reasoning = self.qa_utility.understanding_the_question(query)
+
+        # === Step 2: Determine evidence source ===
+        all_evidences = []
+
+        if evidence:  # Evidence is provided by user
+            for ev in evidence:
+                all_evidences.append(
+                    f"Source: {ev['title']}\n"
+                    f"Author: {ev['author']}\n"
+                    f"URL: {ev['url']}\n"
+                    f"Snippet: {ev['main_text']}\n"
+                )
+        else:  # No evidence → Perform search
+            with concurrent.futures.ThreadPoolExecutor() as executor:
+                future = executor.submit(self.qa_utility.search_web_fast, query=query)
+                while not future.done():
+                    time.sleep(0.1)
+                search_results = future.result()
+                for result in search_results:
+                    all_evidences.append(
+                        f"Source: {result['title']}\n"
+                        f"Author: {result['author']}\n"
+                        f"URL: {result['url']}\n"
+                        f"Snippet: {result['main_text']}\n"
+                    )
+
+        # === Step 3: Synthesize answer ===
+        answer = self.qa_utility.synthesize_and_summarize(query=query, reasoning=reasoning, evidence=all_evidences)
+
+        return answer, all_evidences, query
+
     def terminate(self):
         # Terminate this - but this would stop the end-point (notice this be-careful)
         try:

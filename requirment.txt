@@ -14,3 +14,7 @@ transformers
 torch
 tf_keras
 dotenv
+boto3
+sagemaker
+json
+underthesea

@@ -19,7 +19,12 @@ setup(
         "sentence-transformers",
         "transformers",
         "torch",
-        "tf-keras"
+        "tf-keras",
+        "dotenv",
+        "boto3",
+        "sagemaker",
+        "json",
+        "underthesea"
     ],
     description="A Vietnamese Financial Crawling and Analysis Library",
     python_requires='>=3.7',

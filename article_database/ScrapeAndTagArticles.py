@@ -1,5 +1,5 @@
-from article_database.Database import Database
-from QualAna.ArticleFactCheckUtility import ArticleFactCheckUtility
+from ViFinanceCrawLib.article_database.Database import Database
+from ViFinanceCrawLib.QualAna.ArticleFactCheckUtility import ArticleFactCheckUtility
 from dotenv import load_dotenv
 import os
 import pprint

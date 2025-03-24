@@ -1,7 +1,7 @@
-from QualAna.ArticleFactCheckUtility import ArticleFactCheckUtility
+from .ArticleFactCheckUtility import ArticleFactCheckUtility
 import concurrent.futures
 import time
-from article_database.TextCleaning import TextCleaning
+from ..article_database.TextCleaning import TextCleaning
 class QualAnaIns():
 
     def __init__(self):

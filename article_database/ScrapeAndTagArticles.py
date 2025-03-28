@@ -11,13 +11,12 @@ class ScrapeAndTagArticles:
     def __init__(self):
         load_dotenv("./.devcontainer/devcontainer.env")
         connection_str = os.getenv("CONNECTION_STR")
-        connection_str2= os.getenv("REDIS_STR")
         
         self.db = Database(connection_string=connection_str)
         self.redis_client = redis.Redis(
-        host='usable-racer-46648.upstash.io',
-        port=6379,
-        password=connection_str2,
+        host=os.getenv("REDIS_HOST"),
+        port=os.getenv("REDIS_PORT"),
+        password=os.getenv("REDIS_PASSWORD"),
         ssl=True
         )
         self.utility = ArticleFactCheckUtility()

@@ -38,15 +38,3 @@ class TitleCompleter:
         # Step 4: If all else fails, combine the best guess
         reconstructed_title = f"{original_title[:-3]} {url_title}"
         return reconstructed_title
-
-# if __name__ == '__main__':
-    # tc = TitleCompleter()
-    # # # Example Usage
-    # # original_title = "Tiếp tục sử dụng các công cụ bình ổn giá xăng dầu - Nhịp sống kinh ..."
-    # # article = {
-    # #     "title": "Tiếp tục sử dụng các công cụ bình ổn giá xăng dầu - Nhịp sống kinh ...",
-    # #     "link": "https://vneconomy.vn/tiep-tuc-su-dung-cac-cong-cu-binh-on-gia-xang-dau.htm"
-    # # }
-
-    # # fixed_title = tc.complete_title(original_title, article)
-    # # print(f"🔹 Fixed Title: {fixed_title}")

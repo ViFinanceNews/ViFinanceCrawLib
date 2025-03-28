@@ -22,10 +22,8 @@ from sklearn.metrics.pairwise import cosine_similarity
 class ArticleFactCheckUtility():
 
     def __init__(self, model_name='gemini-2.0-pro-exp-02-05'):
-        load_dotenv("./.devcontainer/devcontainer.env")
-        os.getenv("API_KEY")
+        load_dotenv()
         genai.configure(api_key=os.getenv("API_KEY"))
-        
         self.model_name = model_name
         self.model = genai.GenerativeModel(model_name)
         self.tc = TitleCompleter()
@@ -488,7 +486,6 @@ class ArticleFactCheckUtility():
         return tags
     
     def generate_tags_batch(self, articles: List[str], predefined_tags: Optional[List[str]] = None) -> List[List[str]]:
-        batch_size = len(articles)
         all_tags = []
 
         # Create the prompt for batch processing

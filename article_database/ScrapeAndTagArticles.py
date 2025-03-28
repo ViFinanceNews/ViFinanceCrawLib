@@ -9,7 +9,7 @@ import json
 class ScrapeAndTagArticles:
 
     def __init__(self):
-        load_dotenv("./.devcontainer/devcontainer.env")
+        load_dotenv()
         connection_str = os.getenv("CONNECTION_STR")
         
         self.db = Database(connection_string=connection_str)
@@ -22,30 +22,30 @@ class ScrapeAndTagArticles:
         self.utility = ArticleFactCheckUtility()
     
     def search_and_scrape(self, query):
-        
-        pp = pprint.PrettyPrinter(indent=4)
         # Step 1: Scrape articles
         articles = self.utility.search_web_fast(query, num_results=5)
-        print("search-done")
-        url=[]
-        for article in articles:
-            content = article["main_text"]
-            tags = self.utility.generate_tags(content)
-            article["tags"] = tags
+        tag_batches = self.utility.generate_tags_batch(articles=articles)
 
-            # Step 2: Insert Article -> Retrieve article_id
-            #will need change here to insert into redis first, then insert into sql if user want favorite it
+        url_list = []
+
+        # Step 2: Assign tags and store in Redis
+        for article, tags in zip(articles, tag_batches):
             article_data = {
-                "author": article["author"],
-                "title": article["title"],
-                "url": article["url"],
-                "image_url": article["image_url"],
-                "date_publish": article["date_publish"]
+                "author": article.get("author", "Unknown"),
+                "title": article.get("title", "No Title"),
+                "url": article.get("url"),
+                "image_url": article.get("image_url"),
+                "date_publish": article.get("date_publish"),
+                "tags": tags  # Assign generated tags
             }
-            #Step 2: Insert Article into Redis
-            url.append(article["url"])
-            self.redis_client.set(article["url"], json.dumps(article_data),ex=3600)
-        return url       
+
+            # Store in Redis
+            self.redis_client.set(article["url"], json.dumps(article_data), ex=3600)
+
+            url_list.append(article["url"])
+
+        print(url_list)
+        return url_list      
     
     #move from redis to database
     def move_to_database(self,url):

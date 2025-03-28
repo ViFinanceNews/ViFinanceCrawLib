@@ -22,11 +22,14 @@ from sklearn.metrics.pairwise import cosine_similarity
 class ArticleFactCheckUtility():
 
     def __init__(self, model_name='gemini-2.0-pro-exp-02-05'):
-        load_dotenv(".devcontainer/devcontainer.env")
+        load_dotenv("./.devcontainer/devcontainer.env")
+        os.getenv("API_KEY")
         genai.configure(api_key=os.getenv("API_KEY"))
+        
         self.model_name = model_name
         self.model = genai.GenerativeModel(model_name)
         self.tc = TitleCompleter()
+
         self.search_engine  =  SearchEngine(os.getenv("SEARCH_API_KEY"), os.getenv("SEARCH_ENGINE_ID"))
         self.article_scraper = ArticleScraper()
         return
@@ -584,6 +587,7 @@ class ArticleFactCheckUtility():
         return batch_size
     
     def main(self):
+
         articles = [
         """
         **Bài viết 1: Tình hình kinh tế Việt Nam năm 2024**
@@ -638,7 +642,7 @@ class ArticleFactCheckUtility():
         ]
         result = self.process_articles_in_batches(articles, batch_size=5)
         print(result)
-        # print(type(result)) # a list of list
-        # for i, tags in enumerate(result):
-        #     print(f"Article {i+1} Tags: {', '.join(tags)}")
+        print(type(result)) # a list of list
+        for i, tags in enumerate(result):
+            print(f"Article {i+1} Tags: {', '.join(tags)}")
         return

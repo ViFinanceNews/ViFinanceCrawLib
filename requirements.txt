@@ -1,5 +1,4 @@
 google.generativeai 
-os
 requests
 beautifulsoup4
 news-please>=1.6.13
@@ -13,8 +12,8 @@ sentence_transformers
 transformers
 torch
 tf_keras
-dotenv
 boto3
 sagemaker
 json
 underthesea
+tqdm

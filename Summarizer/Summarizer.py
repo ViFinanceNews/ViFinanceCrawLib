@@ -17,7 +17,7 @@ import json
 import concurrent.futures
 import time
 import importlib.resources
-from QualAna.ArticleFactCheckUtility import ArticleFactCheckUtility
+from ViFinanceCrawLib.QualAna.ArticleFactCheckUtility import ArticleFactCheckUtility
 
 class Summarizer:
     def __init__(self, stopword_file="vietnamese-stopwords-dash.txt", extractive_model="Fsoft-AIC/videberta-base", 
@@ -249,6 +249,84 @@ class Summarizer:
         summary = self.abstractive_summarize(extractive_output)
         return summary
     
+    def multi_article_synthesis(self, articles, num_sentences=4, word_limit=200):
+        """
+        Generate a synthesized summary from multiple articles.
+
+        Args:
+            articles (list[dict]): A list of articles, each represented as a dictionary with field:
+                'title', 'main_text', 'url', authors, date_publish 
+            with title, url -> from Redis & url -> from scrapper
+            num_sentences (int): Number of key sentences to extract per article.
+            word_limit (int): Maximum word limit for the final synthesized summary.
+
+        Returns:
+            str: A cohesive abstractive summary of all input articles.
+        """
+        if not articles:
+            return "No articles provided for synthesis."
+
+        all_extractive_sentences = []
+
+        # Step 1: Extract key sentences from each article
+        for article in articles:
+            sentences = self.pre_processing(article['main_text'])
+            article_sum = dict(
+                title = article["title"],
+                url = article["url"],
+                authors = article["authors"],
+                date_publish = article["date_publish"]
+            )
+            if not sentences:
+                continue
+            extractive_summary = self.extractive_summary(sentences, num_sentences=num_sentences)
+            article_sum["extractive_sum"] = extractive_summary
+            dict_str = str(article_sum)
+            print(dict_str)
+            all_extractive_sentences.extend(dict_str)
+
+        if not all_extractive_sentences:
+            return "No relevant content extracted from the articles."
+
+        # Step 2: Generate a cohesive abstractive summary in a single API call
+        prompt = f"""
+        Bạn là một trợ lý AI chuyên tóm tắt nội dung từ nhiều bài báo.
+        Dưới đây là các câu then chốt được trích xuất từ nhiều bài viết khác nhau - cùng với Meta-Data của chúng:
+
+        ---
+        {" ".join(f"- {sentence}" for sentence in all_extractive_sentences)}
+        ---
+
+        **Yêu cầu:**  
+        1. Hợp nhất nội dung từ nhiều bài báo thành một đoạn tóm tắt mạch lạc.  
+        2. Trình bày súc tích, dễ hiểu, giữ nguyên ý nghĩa chính.  
+        3. Không lặp lại nguyên văn, diễn đạt tự nhiên.  
+        4. Giới hạn độ dài tối đa khoảng {word_limit} từ.  
+        5. Không được thêm bất cứ phản hồi hay biểu cảm nào dư thừa, chỉ được có tóm tắt.  
+        6. Sử dụng trích dẫn trong văn bản theo định dạng **APA 7th**: **[Tên tác giả, Năm](URL)**.  
+        - **Ví dụ:** ([Smith, 2020](https://example.com)) hoặc ([Nguyen & Tran, 2023](https://example.com)).  
+        7. Chỉ tóm tắt, không thêm ý kiến chủ quan hay bình luận.  
+
+        **Ví dụ về định dạng mong muốn:** (CHỈ ĐƯỢC THAM KHẢO) 
+
+        Lorem ipsum dolor sit amet, consectetur adipiscing elit. Fusce varius velit ut turpis fermentum, id tincidunt orci malesuada ([Author, 2020](https://example.com)).  
+        Vestibulum ac nunc in urna sodales condimentum nec id orci ([Author & Coauthor, 2021](https://example.com)).  
+        Phasellus tincidunt, sapien at tristique vulputate, purus leo fringilla turpis, eu euismod nulla ligula a tortor ([Another Author, 2022](https://example.com)).  
+        Integer nec turpis vitae metus tristique fermentum. Sed ut lectus vitae quam consectetur cursus ([Researcher, 2023](https://example.com)).  
+
+        **HẾT VÍ DỤ***
+
+        Hãy viết đoạn tóm tắt chính xác và khách quan:
+        """
+
+        try:
+            response = self.abstractive_model.generate_content(prompt)
+            return response.text.strip()
+
+        except Exception as e:
+            print(f"Error during multi-article synthesis: {e}")
+            return None
+
     def question_and_answer(self, query, evidence=None):
         """
         Answer a question based on either provided evidence or by searching online.
@@ -303,3 +381,82 @@ class Summarizer:
         except self.sm_client.exceptions.ClientError as e:
             print("Endpoint config deletion skipped:", e)
         
+    def test(self):
+        articles = [
+        {
+            "title": "The Future of AI in Healthcare",
+            "main_text": "Artificial Intelligence is transforming the healthcare industry by improving diagnostics, predicting diseases, and personalizing treatment plans. AI-powered systems analyze vast amounts of medical data, enabling early detection of conditions such as cancer and cardiovascular diseases. Machine learning algorithms help doctors make faster, more accurate diagnoses, reducing human error. Robotics and AI-driven tools assist in complex surgeries, improving precision and patient outcomes. Moreover, AI chatbots enhance patient interactions, providing instant support and medical guidance. Despite ethical concerns and data privacy issues, the potential of AI in healthcare continues to expand, promising a more efficient and accessible future.",
+            "url": "https://example.com/ai-healthcare",
+            "authors": ["Dr. John Smith"],
+            "date_publish": "2024-01-15"
+        },
+        {
+            "title": "Quantum Computing: A New Era",
+            "main_text": "Quantum computing is revolutionizing industries by solving problems beyond classical computers' reach. Unlike traditional binary-based systems, quantum computers leverage qubits, enabling parallel computations. This technology accelerates cryptography, optimizing logistics, and advancing drug discovery. Companies like IBM and Google invest in developing scalable quantum processors, pushing computational boundaries. Researchers explore quantum algorithms to enhance AI and data security. However, challenges remain, including error correction and hardware stability. As quantum technology evolves, industries must prepare for its impact, reshaping finance, material science, and cybersecurity. The race for quantum supremacy continues, driving innovation and new technological breakthroughs worldwide.",
+            "url": "https://example.com/quantum-computing",
+            "authors": ["Alice Johnson", "Bob Williams"],
+            "date_publish": "2024-02-10"
+        },
+        {
+            "title": "Climate Change and Renewable Energy",
+            "main_text": "Climate change remains one of the greatest challenges of our time, with rising temperatures and extreme weather events increasing globally. Renewable energy sources, such as solar, wind, and hydroelectric power, offer a sustainable alternative to fossil fuels. Governments and corporations invest in clean energy projects to reduce carbon emissions and slow global warming. Technological advancements enhance energy storage solutions, improving grid stability and efficiency. However, transitioning to renewables requires substantial investment and infrastructure upgrades. Public awareness and policy changes play a crucial role in accelerating this shift. Embracing renewable energy is vital for a cleaner and sustainable future.",
+            "url": "https://example.com/climate-renewable",
+            "authors": ["Emily Davis"],
+            "date_publish": "2024-03-05"
+        },
+        {
+            "title": "Advancements in Natural Language Processing",
+            "main_text": "Natural Language Processing (NLP) has seen rapid advancements, enhancing machine comprehension of human language. AI-driven NLP models, such as GPT and BERT, enable chatbots, language translation, and sentiment analysis. These technologies improve search engines, automate customer service, and facilitate content creation. Pre-trained models learn from vast datasets, understanding context and semantics more accurately. However, ethical concerns arise, including biases in AI responses and misinformation risks. Researchers work to enhance NLP fairness and interpretability. With continuous improvements, NLP reshapes communication, making human-computer interactions more seamless, efficient, and intelligent across various industries, from healthcare to finance and education.",
+            "url": "https://example.com/nlp-advancements",
+            "authors": ["Michael Lee"],
+            "date_publish": "2024-04-20"
+        },
+        {
+            "title": "Cybersecurity Trends in 2024",
+            "main_text": "Cybersecurity is a top priority as cyber threats grow in complexity. Organizations face increasing risks from ransomware, phishing, and data breaches. AI-driven security solutions enhance threat detection and response time. Zero-trust security models are gaining popularity, requiring continuous verification of user identities. Blockchain technology strengthens data security by decentralizing sensitive information. Companies invest in cybersecurity awareness training to mitigate risks from human error. Regulatory frameworks tighten, enforcing stricter compliance measures. As cybercriminals adopt advanced techniques, cybersecurity innovations must evolve to protect digital assets, ensuring businesses and individuals remain secure in an interconnected and data-driven world.",
+            "url": "https://example.com/cybersecurity-trends",
+            "authors": ["Sophia Martinez"],
+            "date_publish": "2024-05-30"
+        },
+        {
+            "title": "The Role of Blockchain in Finance",
+            "main_text": "Blockchain technology is revolutionizing finance by enhancing transparency, security, and efficiency. Decentralized ledgers eliminate the need for intermediaries in transactions, reducing costs. Cryptocurrencies like Bitcoin and Ethereum showcase blockchain's potential in digital payments. Smart contracts enable automated and trustless agreements, streamlining business operations. Financial institutions adopt blockchain to improve cross-border transactions and fraud prevention. However, regulatory challenges and scalability issues persist. Central banks explore digital currencies (CBDCs) to modernize financial systems. As blockchain adoption grows, its impact on banking, investment, and asset management expands, reshaping traditional financial structures and fostering a more decentralized economic landscape.",
+            "url": "https://example.com/blockchain-finance",
+            "authors": ["Daniel Brown"],
+            "date_publish": "2024-06-12"
+        },
+        {
+            "title": "The Impact of AI on Job Markets",
+            "main_text": "Artificial Intelligence is reshaping job markets by automating tasks and creating new opportunities. While AI streamlines repetitive work, concerns arise about job displacement in sectors like manufacturing and customer service. However, AI also generates demand for new roles, such as AI ethics specialists and data scientists. Upskilling and reskilling programs help workers adapt to this evolving landscape. Governments and businesses invest in AI education to bridge the skill gap. AI-human collaboration enhances productivity, allowing employees to focus on creative and strategic tasks. The future workforce will require adaptability as AI-driven transformation accelerates across industries worldwide.",
+            "url": "https://example.com/ai-jobs",
+            "authors": ["Olivia Wilson"],
+            "date_publish": "2024-07-08"
+        },
+        {
+            "title": "Autonomous Vehicles and Transportation",
+            "main_text": "Self-driving cars are revolutionizing urban transportation by improving road safety and reducing traffic congestion. AI-powered sensors and cameras enable real-time decision-making, minimizing human errors. Autonomous vehicles (AVs) promise greater accessibility for individuals with mobility challenges. Ride-sharing services invest in AV technology, reshaping mobility services. However, regulatory and ethical challenges remain, including accident liability and cybersecurity risks. Cities must upgrade infrastructure to accommodate AV adoption. As testing and advancements continue, the future of autonomous transportation moves closer to reality. The transition to driverless technology requires collaboration between tech firms, policymakers, and the public for widespread acceptance.",
+            "url": "https://example.com/autonomous-vehicles",
+            "authors": ["David Clark", "Emma White"],
+            "date_publish": "2024-08-22"
+        },
+        {
+            "title": "Breakthroughs in Space Exploration",
+            "main_text": "Space exploration advances with cutting-edge technology, enabling deeper cosmic exploration. NASA, SpaceX, and other agencies launch missions to Mars and beyond. Private companies innovate spacecraft and reusable rockets, reducing mission costs. The search for extraterrestrial life intensifies, with new telescopes analyzing distant planets. Lunar exploration aims at establishing sustainable bases for future space travel. Satellite technology enhances global communication and Earth monitoring. Challenges include funding constraints and space debris management. As technology progresses, interplanetary travel and asteroid mining become feasible. The future of space exploration holds promise, shaping humanity’s role in the cosmos.",
+            "url": "https://example.com/space-exploration",
+            "authors": ["Lucas Miller"],
+            "date_publish": "2024-09-14"
+        },
+        {
+            "title": "The Ethics of Artificial Intelligence",
+            "main_text": "The ethical implications of artificial intelligence spark global debates. Bias in AI algorithms can reinforce discrimination, affecting hiring, lending, and law enforcement. Privacy concerns arise as AI systems collect vast amounts of personal data. Transparency in AI decision-making is crucial for accountability. Researchers advocate for ethical AI frameworks to prevent misuse. Governments and tech companies collaborate on AI regulations and responsible AI development. Public awareness of AI ethics grows as AI systems become more integrated into daily life. Ensuring fairness, accountability, and human-centric AI remains a critical challenge for future advancements.",
+            "url": "https://example.com/ai-ethics",
+            "authors": ["Sophia Garcia"],
+            "date_publish": "2024-10-29"
+        }
+    ]
+
+        synthesis = self.multi_article_synthesis(articles=articles)
+        print("END RESULT" + "\n")
+        print(synthesis)
+
+    

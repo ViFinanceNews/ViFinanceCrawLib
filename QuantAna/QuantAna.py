@@ -205,7 +205,6 @@ class QuantAnaIns:
         except Exception as e:
             print(f"[ERROR] SageMaker Invocation Failed: {str(e)}")
             return None
-
     
     def sentiment_analysis(self, article_text):
         "Detecting the sentiment in the article & measure how strong it's"

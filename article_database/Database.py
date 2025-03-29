@@ -16,6 +16,7 @@ class Database:
     def connect(self):
         """Establishes a database connection."""
         try:
+            # print(self.connection_string)
             self.conn = pyodbc.connect(self.connection_string)
             print("✅ Connected to Azure SQL Database successfully!")
         except pyodbc.Error as e:

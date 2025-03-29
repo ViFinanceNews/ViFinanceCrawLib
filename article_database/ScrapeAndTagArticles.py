@@ -23,7 +23,7 @@ class ScrapeAndTagArticles:
     
     def search_and_scrape(self, query):
         # Step 1: Scrape articles
-        articles = self.utility.search_web_fast(query, num_results=5)
+        articles = self.utility.search_web_fast(query, num_results=10)
         tag_batches = self.utility.generate_tags_batch(articles=articles)
 
         url_list = []
@@ -52,7 +52,12 @@ class ScrapeAndTagArticles:
         self.db.connect()
         # Step 1: Retrieve article from Redis
         redis_article = self.redis_client.get(url)
-        
+        if redis_article is not None:
+            redis_article = redis_article.decode("utf-8")  # 🔥 Decode bytes to string
+            redis_article = json.loads(redis_article)
+            print(redis_article)
+        else:
+            return "Cannot retrieve None article"
         # Step 2: Insert Article into SQL Database
         article_data = {
             "author": redis_article["author"],

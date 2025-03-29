@@ -3,7 +3,7 @@ import pprint
 """
 # Sample NewsArticle object (as a dictionary)
 news_article = {
-    "authors": ["VnExpress"],
+    "author": ["VnExpress"],
     "date_download": "2025-02-28 21:18:28",
     "date_modify": None,
     "date_publish": "2024-10-25",

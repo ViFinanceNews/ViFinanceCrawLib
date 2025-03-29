@@ -21,7 +21,7 @@ from sklearn.metrics.pairwise import cosine_similarity
 
 class ArticleFactCheckUtility():
 
-    def __init__(self, model_name='gemini-2.0-pro-exp-02-05'):
+    def __init__(self, model_name='gemini-2.0-flash-thinking-exp-01-21'):
         load_dotenv()
         genai.configure(api_key=os.getenv("API_KEY"))
         self.model_name = model_name

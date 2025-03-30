@@ -14,6 +14,5 @@ torch
 tf_keras
 boto3
 sagemaker
-json
 underthesea
 tqdm

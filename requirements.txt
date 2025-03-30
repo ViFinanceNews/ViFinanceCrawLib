@@ -15,5 +15,4 @@ tf_keras
 boto3
 sagemaker
 maturin
-underthesea
 tqdm

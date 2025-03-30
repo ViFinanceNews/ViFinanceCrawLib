@@ -17,3 +17,4 @@ sagemaker
 nltk
 maturin
 tqdm
+Flask==2.2.5

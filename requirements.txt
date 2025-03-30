@@ -14,5 +14,6 @@ torch
 tf_keras
 boto3
 sagemaker
+nltk
 maturin
 tqdm

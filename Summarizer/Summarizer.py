@@ -5,7 +5,8 @@ import numpy as np
 import torch.nn.functional as F
 import re
 from torch.nn.utils.rnn import pad_sequence
-from underthesea import sent_tokenize, word_tokenize, text_normalize
+from nltk.tokenize import sent_tokenize, word_tokenize
+from nltk.corpus import stopwords
 from typing import List
 import networkx as nx  # support the the Text-Rank Algorithm
 from transformers import AutoModel, AutoTokenizer
@@ -20,6 +21,7 @@ from concurrent.futures import ThreadPoolExecutor
 from ViFinanceCrawLib.QualAna.ArticleFactCheckUtility import ArticleFactCheckUtility
 import queue
 from tqdm import tqdm
+import subprocess
 
 class Summarizer:
     def __init__(self, stopword_file="vietnamese-stopwords-dash.txt", extractive_model="Fsoft-AIC/videberta-base", 
@@ -29,7 +31,7 @@ class Summarizer:
         current_dir = os.path.dirname(os.path.abspath(__file__))
         print("📂 Current dir:", current_dir)
         stopword_path = os.path.join(current_dir, stopword_file)
-        # setting up with the extractive model
+        
         self.stopword = set([
             "và", "của", "là", "ở", "trong", "có", "được", "cho", "với", "tại",
             "như", "này", "đó", "một", "các", "những", "để", "vào", "ra", "lên",
@@ -105,8 +107,11 @@ class Summarizer:
         self.qa_utility = ArticleFactCheckUtility()
         return
 
+    def text_normalize(self, text):
+        return text.strip().lower()  # Basic normalization (can be extended)
+
     def pre_processing(self, text):
-      text = text_normalize(text)
+      text = self.text_normalize(text)
       text = text.lower()
       # keep the some special token that bring semantic data
       text = re.sub(r'[^\w\s.!?%]', '', text)
@@ -120,7 +125,8 @@ class Summarizer:
       for sentence in sentences:
           try:
               # tokenize
-              tokens = word_tokenize(sentence, format="text").split()
+              # tokens = word_tokenize(sentence).split()
+              tokens = word_tokenize(sentence)
               # Combine "number + %""
               new_tokens = []
               i = 0
@@ -133,15 +139,15 @@ class Summarizer:
                       new_tokens.append(tokens[i])
                       i += 1
               # Filter stopwords & normalization
-              processed_tokens = []
-              for token in new_tokens:
-                  if token.endswith("%"):  # if token contain % -> keep still
-                      processed_tokens.append(token)
-                  elif token not in self.stopword:
-                      processed_tokens.append(text_normalize(token)) # Remove stopwords
-              # Combined to the %
-              processed_sentence = " ".join(processed_tokens)
-              processed_sentences.append(processed_sentence)
+
+              processed_tokens = [
+                    token if token.endswith("%") else self.text_normalize(token)
+                    for token in new_tokens
+                    if token.endswith("%") or token.lower() not in self.stopword
+                ]
+
+              processed_sentences.append(" ".join(processed_tokens))
+
           except Exception as e:
               print(f"Error processing sentence: {e}")
               continue

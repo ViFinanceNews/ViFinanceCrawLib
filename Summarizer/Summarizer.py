@@ -6,10 +6,10 @@ import torch.nn.functional as F
 import re
 from torch.nn.utils.rnn import pad_sequence
 from nltk.tokenize import sent_tokenize, word_tokenize
-from nltk.corpus import stopwords
+import nltk
 from typing import List
 import networkx as nx  # support the the Text-Rank Algorithm
-from transformers import AutoModel, AutoTokenizer
+from transformers import AutoModel, AutoTokenizer # do not modify
 import boto3
 import sagemaker
 from sagemaker.huggingface import HuggingFaceModel
@@ -31,7 +31,14 @@ class Summarizer:
         current_dir = os.path.dirname(os.path.abspath(__file__))
         print("📂 Current dir:", current_dir)
         stopword_path = os.path.join(current_dir, stopword_file)
-        
+        resource = "punkt_tab"
+        try:
+            nltk.data.find(f'tokenizers/{resource}')
+            print(f"{resource} is already installed.")
+        except LookupError:
+            print(f"{resource} not found. Downloading...")
+            nltk.download(resource)
+            print(f"{resource} downloaded successfully.")
         self.stopword = set([
             "và", "của", "là", "ở", "trong", "có", "được", "cho", "với", "tại",
             "như", "này", "đó", "một", "các", "những", "để", "vào", "ra", "lên",
@@ -75,27 +82,45 @@ class Summarizer:
                 print(f"Endpoint exists but status is {status}. Recreating...")
         except self.sm_client.exceptions.ClientError:
             print(f"Endpoint '{self.endpoint_name}' does not exist. Deploying new endpoint.")
-
-        # Only deploy if endpoint does not exist
-        if not endpoint_exists:
-            self.HF_TASK = task
-            self.hub = {
-                'HF_MODEL_ID': self.HF_MODEL_ID,
-                'HF_TASK': self.HF_TASK
-            }
-            self.huggingface_model = HuggingFaceModel(
-                transformers_version='4.37.0',
-                pytorch_version='2.1.0',
-                py_version='py310',
-                env=self.hub,
-                role=self.role
-            )
-            self.model = self.huggingface_model.deploy(
-                initial_instance_count=1,
-                instance_type=instance_type,
-                endpoint_name=self.endpoint_name
-            )
-            print(f"New endpoint '{self.endpoint_name}' deployed and ready.")
+        
+        # Check if the model exists in SageMaker
+        model_exists = False
+        try:
+            response = self.sm_client.list_models()
+            # Extract all model names
+            if response["Models"]:
+                model_names = [model["ModelName"] for model in response["Models"]]
+                if self.endpoint_name in model_names:
+                    model_exists = True
+            else:
+                print(f"Model '{self.endpoint_name}' not found in SageMaker.")
+        except self.sm_client.exceptions.ClientError:
+                print(f"Failed to retrieve models '{self.endpoint_name}' from SageMaker. - Create new model")
+        
+        # Only deploy the if endpoint or model not exist
+        if (not endpoint_exists):
+                if not model_exists:
+                    self.HF_TASK = task
+                    self.hub = {
+                        'HF_MODEL_ID': self.HF_MODEL_ID,
+                        'HF_TASK': self.HF_TASK
+                    }
+                    self.huggingface_model = HuggingFaceModel(
+                        transformers_version='4.37.0',
+                        pytorch_version='2.1.0',
+                        py_version='py310',
+                        env=self.hub,
+                        role=self.role,
+                        name= self.endpoint_name
+                    )
+                else:
+                    print(f"Model '{self.endpoint_name}' exists. Deploying new endpoint...")
+                self.model = self.huggingface_model.deploy(
+                    initial_instance_count=1,
+                    instance_type=instance_type,
+                    endpoint_name=self.endpoint_name
+                )
+                print(f"New endpoint '{self.endpoint_name}' deployed and ready.")
         else:
             print("Skipping deployment, using existing endpoint.")
 

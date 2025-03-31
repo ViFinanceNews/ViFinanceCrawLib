@@ -16,13 +16,29 @@ import sagemaker
 import json
 import numpy as np
 import pandas as pd
+from vncorenlp.vncorenlp import VnCoreNLP
+from dotenv import load_dotenv
+import google.generativeai as genai
+import os
+from pathlib import Path
+import sys
 class QuantAnaIns:
 
     def __init__(self):
+        load_dotenv()
+        genai.configure(api_key=os.getenv("API_KEY"))
+        model_name='gemini-2.0-flash-thinking-exp-01-21'
+        self.translator_model = genai.GenerativeModel(model_name)
         self.endpoint_name = 'sentence-feature-extract'
         self.runtime = boto3.client('sagemaker-runtime')
         self.HF_MODEL_ID = "Fsoft-AIC/videberta-base"
         self.sm_client = boto3.client('sagemaker')
+        filename = "VnCoreNLP-1.1.1.jar"
+        file_path = Path.cwd() /filename
+        if not file_path.exists():
+            print(f"Error: Required file '{filename}' not found in the current directory.")
+            sys.exit(1)  # Stop execution if the file is missing
+        self.rdrsegmenter = VnCoreNLP(file_path, annotators="wseg",  max_heap_size='-Xmx500m')
         try:
             self.role = sagemaker.get_execution_role()
         except ValueError:
@@ -41,31 +57,50 @@ class QuantAnaIns:
         except self.sm_client.exceptions.ClientError:
             print(f"Endpoint '{self.endpoint_name}' does not exist. Deploying new endpoint.")
 
-        # Only deploy if endpoint does not exist
-        if not endpoint_exists:
-            self.HF_TASK = 'feature-extraction'
-            self.hub = {
-                'HF_MODEL_ID': self.HF_MODEL_ID,
-                'HF_TASK': self.HF_TASK
-            }
-            self.huggingface_model = HuggingFaceModel(
-                transformers_version='4.37.0',
-                pytorch_version='2.1.0',
-                py_version='py310',
-                env=self.hub,
-                role=self.role
-            )
-            self.model = self.huggingface_model.deploy(
-                initial_instance_count=1,
-                instance_type='ml.t2.medium',
-                endpoint_name=self.endpoint_name
-            )
-            print(f"New endpoint '{self.endpoint_name}' deployed and ready.")
+        
+        # Check if the model exists in SageMaker
+        model_exists = False
+        try:
+            response = self.sm_client.list_models()
+            # Extract all model names
+            if response["Models"]:
+                model_names = [model["ModelName"] for model in response["Models"]]
+                if self.endpoint_name in model_names:
+                    model_exists = True
+            else:
+                print(f"Model '{self.endpoint_name}' not found in SageMaker.")
+        except self.sm_client.exceptions.ClientError:
+                print(f"Failed to retrieve models '{self.endpoint_name}' from SageMaker. - Create new model")
+        
+
+        # Only deploy the if endpoint or model not exist
+        if (not endpoint_exists):
+                if not model_exists:
+                    self.HF_TASK = 'feature-extraction'
+                    self.hub = {
+                        'HF_MODEL_ID': self.HF_MODEL_ID,
+                        'HF_TASK': self.HF_TASK
+                    }
+                    self.huggingface_model = HuggingFaceModel(
+                        transformers_version='4.37.0',
+                        pytorch_version='2.1.0',
+                        py_version='py310',
+                        env=self.hub,
+                        role=self.role,
+                        name= self.endpoint_name
+                    )
+                else:
+                    print(f"Model '{self.endpoint_name}' exists. Deploying new endpoint...")
+                self.model = self.huggingface_model.deploy(
+                    initial_instance_count=1,
+                    instance_type='ml.t2.medium',
+                    endpoint_name=self.endpoint_name
+                )
+                print(f"New endpoint '{self.endpoint_name}' deployed and ready.")
         else:
             print("Skipping deployment, using existing endpoint.")
-
-
-        self.sentiment_model_name = "tabularisai/multilingual-sentiment-analysis"
+    
+        self.sentiment_model_name = "tabularisai/multilingual-sentiment-analysis" # Deploy on Hugging_Face using the same-endpoint with the Semantic Comparision
         self.sentiment_pipeline = "text-classification"
         self.sentiment_model = pipeline(self.sentiment_pipeline, model=self.sentiment_model_name)
         print("Successful create QuantAna")
@@ -106,7 +141,7 @@ class QuantAnaIns:
             print(f"[ERROR] SageMaker Invocation Failed: {str(e)}")
             return None
 
-    def compute_multi_semantic_similarity(self, source_articles, query_article=None):
+    def compute_multi_semantic_similarity(self, source_articles, query_article=None, display_table=False):
         """
         Calculate Semantic Similarity:
         - (Optional) Query article vs each source article
@@ -126,6 +161,7 @@ class QuantAnaIns:
             embeddings = []
 
             # Handle chunking if too many source articles
+            
             chunk_size = 5
             source_chunks = [source_articles[i:i+chunk_size] for i in range(0, len(source_articles), chunk_size)]
 
@@ -179,24 +215,24 @@ class QuantAnaIns:
                     score = util.pytorch_cos_sim(src1, src2).item()
                     row.append(score)
                 intersource.append(row)
+            if display_table:
+                if query_article:
+                    # === 1. Query-to-Source Similarity ===
+                    query_df = pd.DataFrame({
+                        'Source': [f'Source_{i+1}' for i in range(len(query_to_sources))],
+                        'Matching_to_Query': query_to_sources
+                    })
 
-            if query_article:
-                # === 1. Query-to-Source Similarity ===
-                query_df = pd.DataFrame({
-                    'Source': [f'Source_{i+1}' for i in range(len(query_to_sources))],
-                    'Matching_to_Query': query_to_sources
-                })
+                    print("=== Query to Sources Similarity ===")
+                    print(query_df.round(3))  # Rounded to 3 decimal places
+                    print("\n")
 
-                print("=== Query to Sources Similarity ===")
-                print(query_df.round(3))  # Rounded to 3 decimal places
-                print("\n")
+                # === 2. Intersource Similarity Matrix ===
+                labels = [f"Source_{i+1}" for i in range(len(intersource))]
+                matrix_df = pd.DataFrame(np.array(intersource), index=labels, columns=labels)
 
-            # === 2. Intersource Similarity Matrix ===
-            labels = [f"Source_{i+1}" for i in range(len(intersource))]
-            matrix_df = pd.DataFrame(np.array(intersource), index=labels, columns=labels)
-
-            print("=== Intersource Similarity Matrix ===")
-            print(matrix_df.round(3))
+                print("=== Intersource Similarity Matrix ===")
+                print(matrix_df.round(3))
             return {
                 'query_to_sources': query_to_sources,
                 'intersource': intersource
@@ -216,17 +252,112 @@ class QuantAnaIns:
             "sentiment_score": sentiment_score
         }
 
-    def detect_toxicity(self, article_text):
-        """Detects toxicity and misinformation in the article."""
-        toxicity_score = Detoxify("multilingual").predict(article_text)
+    def translation_from_Vie_to_Eng(self, text :str):
+        """
+        Generate the clear and concise translation from Vietnamese text to English
+        for Toxicity Analysis
+        
+        Parameters:
+            article (str): The article content to analyze.
 
-        return {
-            "Tính Độc Hại": toxicity_score["toxicity"],
-            "Tính Xúc Phạm": toxicity_score["insult"],
-            "Tính Đe Doạ": toxicity_score["threat"],
-            "Công kích danh tính": toxicity_score["identity_attack"],
-            "Mức Độ Thô Tục":  toxicity_score["obscene"]
-        }
+        Returns:
+            str: The formatted prompt for LLM analysis.
+        """
+    
+        prompt = f"""
+            Bạn là một nhà khoa học và nhà văn, dịch giả song ngữ thông thạo cả tiếng Anh và tiếng Việt. Nhiệm vụ của bạn là dịch văn bản từ **tiếng Việt sang tiếng Anh** một cách chính xác, giữ nguyên giọng điệu, bao gồm cả mức độ trang trọng, cảm xúc, sự thô bạo hoặc độc hại nếu có.
+
+            Yêu cầu:
+                1. **Chỉ dịch từ tiếng Việt sang tiếng Anh.** Không dịch theo hướng ngược lại.
+                2. **Bảo toàn ý nghĩa và giọng điệu gốc:** Nếu văn bản có sự mỉa mai, châm biếm, trang trọng, hoặc bất kỳ cảm xúc nào, hãy đảm bảo dịch sao cho giữ nguyên sắc thái đó.
+                3. **Vì kết quả sẽ qua một bộ phân tích cần chính xác - nên các từ ngữ phân biệt, miệt thị cũng không được nói giảm nói tránh - phải nói thẳng dùng đúng từ gốc như trong từ điển
+                3. **Dịch chính xác thuật ngữ chuyên ngành:** Khi gặp thuật ngữ khoa học, công nghệ, AI hoặc ngôn ngữ học, hãy dịch đúng và sử dụng từ ngữ phổ biến trong giới chuyên môn.
+                4. **Dịch tự nhiên, không dịch theo kiểu máy móc:** Hãy đảm bảo câu văn trôi chảy, tự nhiên, đúng ngữ pháp và dễ hiểu đối với người bản ngữ.
+                5. **Không kiểm duyệt nội dung:** Nếu văn bản có nội dung thô bạo, độc hại hoặc chỉ trích, hãy dịch đúng với giọng điệu gốc thay vì làm nhẹ đi hoặc thay đổi ý nghĩa.
+                6. **Chỉ trả về bản dịch tiếng Anh.** Không giải thích, không thêm nội dung ngoài bản dịch.
+
+            Ví dụ:
+                • **Tiếng Việt:** "Nghiên cứu này mang tính đột phá, nhưng sự kiêu ngạo của tác giả thì không thể chịu nổi."
+                • **Tiếng Anh:** "This research is groundbreaking, but the author’s arrogance is unbearable."
+
+            Hãy dịch văn bản sau đây theo đúng các nguyên tắc trên và chỉ trả về bản dịch tiếng Anh:
+
+            {text}
+            """
+        
+        try:
+            response = self.translator_model.generate_content(prompt)
+            if not hasattr(response, "text") or not response.text:
+                print("⚠️ Warning: Empty response from AI model.")
+                return []
+
+            analysis = response.text
+            return analysis
+        
+        except Exception as e:
+            print(f"❌ Error in generate_search_queries: {e}")
+            return []
+
+    def combine_tokens(self, tokens):
+        """ 
+        Combines a list of segmented tokens into a single string.
+
+        This method is specifically designed to handle tokens generated by VnCoreNLP segmentation (By Dat,et al 2018) , 
+        where words are often segmented into smaller units with underscores ("_") to represent morphemes 
+        or sub-word units. It joins the list of tokens into a single string with spaces separating each token 
+        and removes any underscores from the resulting string to reconstruct the original word form.
+
+        Parameters:
+        tokens (list): A list of tokens (strings) obtained from VnCoreNLP segmentation, 
+                        which may include underscores between sub-word units.
+
+        Returns:
+        str: A single string formed by joining the tokens with spaces, 
+            with all underscores removed, effectively merging the segmented words.
+
+        Example:
+        >>> obj.combine_tokens(["hello", "world_example"])
+        'hello worldexample'
+        
+        This method is useful for reconstructing the text after segmentation when processing text with VnCoreNLP.
+
+        Original Link to the Segmentation Library:
+        https://github.com/vncorenlp/VnCoreNLP.git 
+        """
+        return " ".join(tokens).replace("_", "")
+
+    def detect_toxicity(self, article_text: str):
+        """Detects toxicity and misinformation in the article.
+           Parameter: article_text (Vietnamese String need to be pre-process and segmentized)
+           Returns:
+            A dictionary with the format: (the printed out result would be translate to Vietnamese)
+                {"Toxicity: Score", "Insult": Score, "Threat": Score, "Identity Attack" : Score, "Obscene" :Score}
+        """
+        try:
+            tokenized_text = self.rdrsegmenter.tokenize(article_text)
+            pre_processed_sentences = self.combine_tokens(tokenized_text)
+            translation = self.translation_from_Vie_to_Eng(pre_processed_sentences)
+            toxicity_score = Detoxify("multilingual").predict(article_text)
+
+            return {
+                "Tính Độc Hại": toxicity_score["toxicity"],
+                "Tính Xúc Phạm": toxicity_score["insult"],
+                "Tính Đe Doạ": toxicity_score["threat"],
+                "Công kích danh tính": toxicity_score["identity_attack"],
+                "Mức Độ Thô Tục":  toxicity_score["obscene"]
+            }
+        except Exception as e:
+            # Log the exception with details for debugging
+            print(f"An error occurred: {e}")
+            # Optionally log more details, such as the input and the stack trace
+            import traceback
+            traceback.print_exc()
+
+            # Return a response or a default value in case of error
+            return {
+                "error": "An error occurred while detecting toxicity",
+                "details": str(e)
+            }
     
     def terminate(self):
         # Terminate this - but this would stop the end-point (notice this be-careful)

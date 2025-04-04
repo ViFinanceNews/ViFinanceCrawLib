@@ -17,7 +17,6 @@ class QualAnaIns():
                 f"URL: {result['url']}\n"
                 f"Snippet: {result['main_text']}\n"
             )
-            
         ranked_evidence = self.utility.filter_rank(query=query,valid_articles= all_evidence)
         evidence_string = "\n\n".join(ranked_evidence)
 

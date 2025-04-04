@@ -7,7 +7,6 @@
 """
 from sagemaker.huggingface import HuggingFaceModel
 from ViFinanceCrawLib.article_database.TextCleaning import TextCleaning as tc
-from transformers import pipeline
 import torch
 from detoxify import Detoxify
 from sentence_transformers import util
@@ -21,6 +20,7 @@ from dotenv import load_dotenv
 import google.generativeai as genai
 import os
 from pathlib import Path
+import re
 
 class QuantAnaIns:
     def __init__(self):
@@ -226,13 +226,13 @@ class QuantAnaIns:
                     score = util.pytorch_cos_sim(src1, src2).item()
                     row.append(score)
                 intersource.append(row)
-            if display_table:            if display_table:
-                    if query_article:
-                        # === 1. Query-to-Source Similarity ===
-                        query_df = pd.DataFrame({
-                            'Source': [f'Source_{i+1}' for i in range(len(query_to_sources))],
-                            'Matching_to_Query': query_to_sources
-                        })
+            if display_table:
+                if query_article:
+                    # === 1. Query-to-Source Similarity ===
+                    query_df = pd.DataFrame({
+                        'Source': [f'Source_{i+1}' for i in range(len(query_to_sources))],
+                        'Matching_to_Query': query_to_sources
+                    })
 
                     print("=== Query to Sources Similarity ===")
                     print(query_df.round(3))  # Rounded to 3 decimal places
@@ -253,7 +253,39 @@ class QuantAnaIns:
             print(f"[ERROR] SageMaker Invocation Failed: {str(e)}")
             return None
     
+    def generative_extractive(self, article_text):
+        prompt = f"""
+        Bạn là một chuyên gia tóm tắt trích xuất. Hãy **trích nguyên văn 5 câu quan trọng nhất** từ bài viết sau để nắm bắt nội dung cốt lõi và trình bày dưới dạng **một đoạn văn súc tích**.
+
+        ### **Yêu cầu:**  
+        - **Phải trích nguyên văn** từ bài viết, **không viết lại, không diễn giải**.  
+        - Các câu phải **đủ ý, quan trọng, và có ý nghĩa độc lập**.  
+        - Sắp xếp các câu một cách hợp lý để đảm bảo mạch nội dung tự nhiên.  
+        - Nếu bài viết có ít hơn 10 câu, hãy trích xuất toàn bộ các câu quan trọng nhất có thể.  
+        - **Không thêm bất kỳ phản hồi hoặc nội dung thừa thãi nào**, chỉ xuất ra đoạn văn chứa các câu trích xuất.
+
+        ### **Bài viết:**  
+        {article_text}
+
+        ### **Định dạng đầu ra (một đoạn văn chứa 10 câu nguyên văn):**  
+        "[Câu 1] [Câu 2] [Câu 3] … [Câu 10]"
+        """
+
+        try:
+            response = self.translator_model.generate_content(prompt)
+            if not getattr(response, "text", None):
+                print("⚠️ Warning: Empty response from AI model.")
+                return ""
+
+            return response.text
+
+        except Exception as e:
+            print(f"❌ Error in generative_extractive: {e}")
+            return ""
+
     def sentiment_analysis(self, article_text):
+        article_text = re.sub(r"\[Câu \d+\]\s*", "", article_text)
+        print(article_text)
         payload = {
             "inputs": article_text
         }
@@ -273,15 +305,7 @@ class QuantAnaIns:
         except Exception as e:
             print(f"[ERROR] SageMaker Invocation Failed: {str(e)}")
             return None
-        # "Detecting the sentiment in the article & measure how strong it's"
-        # sentiment_result = self.sentiment_model(article_text)
-        # sentiment_label = sentiment_result[0]['label']
-        # sentiment_score = sentiment_result[0]['score']
-        # return {
-        #     "sentiment_label": sentiment_label,  # NEG: Tiêu cực, POS: Tích cực, NEU: Trung tính
-        #     "sentiment_score": sentiment_score
-        # }
-
+       
     def translation_from_Vie_to_Eng(self, text :str):
         """
         Generate the clear and concise translation from Vietnamese text to English

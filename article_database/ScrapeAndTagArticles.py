@@ -37,7 +37,9 @@ class ScrapeAndTagArticles:
                 "image_url": article.get("image_url"),
                 "date_publish": article.get("date_publish"),
                 "main_text": article.get("main_text"),
-                "tags": tags  # Assign generated tags
+                "tags": tags,  # Assign generated tags
+                "upvote": article.get("upvote"),
+                "vote_type":article.get("vote_type")
             }
 
             # Store in Redis
@@ -45,7 +47,6 @@ class ScrapeAndTagArticles:
 
             url_list.append(article["url"])
 
-        print(url_list)
         return url_list      
     
     #move from redis to database

@@ -407,7 +407,7 @@ class ArticleFactCheckUtility():
             return None
     
     def filter_rank(self,query, valid_articles):
-        corpus = query + valid_articles
+        corpus = [str(query)] + valid_articles # Set the query to a list of string to prevent out-of-bound index dues to the corpus-size >= valid_articles-size
         # Step 1: TF-IDF Vectorization
         vectorizer = TfidfVectorizer(stop_words='english')
         tfidf_matrix = vectorizer.fit_transform(corpus)

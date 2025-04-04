@@ -22,88 +22,108 @@ import google.generativeai as genai
 import os
 from pathlib import Path
 import sys
-class QuantAnaIns:
+import os
+import sys
+import boto3
+from pathlib import Path
+from vncorenlp import VnCoreNLP
+import sagemaker
+from sagemaker.huggingface import HuggingFaceModel
+from dotenv import load_dotenv
 
+class QuantAnaIns:
     def __init__(self):
         load_dotenv()
         genai.configure(api_key=os.getenv("API_KEY"))
-        model_name='gemini-2.0-flash-thinking-exp-01-21'
-        self.translator_model = genai.GenerativeModel(model_name)
+
+        self.model_name = 'gemini-2.0-flash-thinking-exp-01-21'
+        self.translator_model = genai.GenerativeModel(self.model_name)
         self.endpoint_name = 'sentence-feature-extract'
+        self.sentiment_endpoint_name = 'multi-ling-sentiment-analysis'
         self.runtime = boto3.client('sagemaker-runtime')
-        self.HF_MODEL_ID = "Fsoft-AIC/videberta-base"
         self.sm_client = boto3.client('sagemaker')
-        filename = "VnCoreNLP-1.1.1.jar"
-        file_path = Path.cwd() /filename
+        self.HF_MODEL_ID_FEATURE_EXTRACT = "Fsoft-AIC/videberta-base"
+        self.HF_TASK_FEATURE = "feature-extraction"
+        self.HF_MODEL_ID_SENTIMENT = "tabularisai/multilingual-sentiment-analysis"
+        self.HF_TASK_SENTIMENT = 'text-classification'
+        self._set_up_vncorenlp()
+        self._set_up_sagemaker_role()
+
+        # Deploy the models if they don't exist
+        self._deploy_endpoint(self.endpoint_name, self.HF_MODEL_ID_FEATURE_EXTRACT, self.HF_TASK_FEATURE)
+        self._deploy_endpoint(self.sentiment_endpoint_name, self.HF_MODEL_ID_SENTIMENT, self.HF_TASK_SENTIMENT)
+
+    def _set_up_vncorenlp(self):
+        filename = "VnCoreNLP/VnCoreNLP-1.1.1.jar"
+        file_path = Path.cwd() / filename
         if not file_path.exists():
             print(f"Error: Required file '{filename}' not found in the current directory.")
-            sys.exit(1)  # Stop execution if the file is missing
-        self.rdrsegmenter = VnCoreNLP(file_path, annotators="wseg",  max_heap_size='-Xmx500m')
+            sys.exit(1)
+        self.rdrsegmenter = VnCoreNLP(str(file_path), annotators="wseg", max_heap_size='-Xmx500m')
+
+    def _set_up_sagemaker_role(self):
         try:
             self.role = sagemaker.get_execution_role()
         except ValueError:
             iam = boto3.client('iam')
             self.role = iam.get_role(RoleName='sagemaker_execution_role')['Role']['Arn']
-        # Check if endpoint exists
-        endpoint_exists = False
+
+    def _check_endpoint_exists(self, endpoint_name):
         try:
-            response = self.sm_client.describe_endpoint(EndpointName=self.endpoint_name)
+            response = self.sm_client.describe_endpoint(EndpointName=endpoint_name)
             status = response['EndpointStatus']
             if status in ['InService', 'Creating']:
-                print(f"Endpoint '{self.endpoint_name}' already exists with status: {status}.")
-                endpoint_exists = True
+                print(f"Endpoint '{endpoint_name}' already exists with status: {status}.")
+                return True
             else:
                 print(f"Endpoint exists but status is {status}. Recreating...")
+                return False
         except self.sm_client.exceptions.ClientError:
-            print(f"Endpoint '{self.endpoint_name}' does not exist. Deploying new endpoint.")
+            print(f"Endpoint '{endpoint_name}' does not exist. Deploying new endpoint.")
+            return False
 
-        
-        # Check if the model exists in SageMaker
-        model_exists = False
+    def _check_model_exists(self, endpoint_name):
         try:
             response = self.sm_client.list_models()
-            # Extract all model names
-            if response["Models"]:
-                model_names = [model["ModelName"] for model in response["Models"]]
-                if self.endpoint_name in model_names:
-                    model_exists = True
+            model_names = [model["ModelName"] for model in response.get("Models", [])]
+            if endpoint_name in model_names:
+                return True
             else:
-                print(f"Model '{self.endpoint_name}' not found in SageMaker.")
+                print(f"Model '{endpoint_name}' not found in SageMaker.")
+                return False
         except self.sm_client.exceptions.ClientError:
-                print(f"Failed to retrieve models '{self.endpoint_name}' from SageMaker. - Create new model")
-        
+            print(f"Failed to retrieve models '{endpoint_name}' from SageMaker. Creating new model.")
+            return False
 
-        # Only deploy the if endpoint or model not exist
-        if (not endpoint_exists):
-                if not model_exists:
-                    self.HF_TASK = 'feature-extraction'
-                    self.hub = {
-                        'HF_MODEL_ID': self.HF_MODEL_ID,
-                        'HF_TASK': self.HF_TASK
-                    }
-                    self.huggingface_model = HuggingFaceModel(
-                        transformers_version='4.37.0',
-                        pytorch_version='2.1.0',
-                        py_version='py310',
-                        env=self.hub,
-                        role=self.role,
-                        name= self.endpoint_name
-                    )
-                else:
-                    print(f"Model '{self.endpoint_name}' exists. Deploying new endpoint...")
-                self.model = self.huggingface_model.deploy(
+    def _deploy_endpoint(self, endpoint_name, model_id, task):
+        endpoint_exists = self._check_endpoint_exists(endpoint_name)
+        if not endpoint_exists:
+            model_exists = self._check_model_exists(endpoint_name)
+            if not model_exists:
+                hub = {
+                    'HF_MODEL_ID': model_id,
+                    'HF_TASK': task
+                }
+                huggingface_model = HuggingFaceModel(
+                    transformers_version='4.37.0',
+                    pytorch_version='2.1.0',
+                    py_version='py310',
+                    env=hub,
+                    role=self.role,
+                    name=endpoint_name
+                )
+                self.model = huggingface_model.deploy(
                     initial_instance_count=1,
                     instance_type='ml.t2.medium',
-                    endpoint_name=self.endpoint_name
+                    endpoint_name=endpoint_name
                 )
-                print(f"New endpoint '{self.endpoint_name}' deployed and ready.")
+                print(f"New endpoint '{endpoint_name}' deployed and ready.")
+            else:
+                print(f"Model '{endpoint_name}' exists - deploying new endpoint.")
         else:
-            print("Skipping deployment, using existing endpoint.")
-    
-        self.sentiment_model_name = "tabularisai/multilingual-sentiment-analysis" # Deploy on Hugging_Face using the same-endpoint with the Semantic Comparision
-        self.sentiment_pipeline = "text-classification"
-        self.sentiment_model = pipeline(self.sentiment_pipeline, model=self.sentiment_model_name)
-        print("Successful create QuantAna")
+            print(f"Skipping deployment, using existing endpoint '{endpoint_name}'.")
+
+        print("QuantAna created successfully.")
 
     def compute_semantic_similarity(self, article1, article2):
         """Calculate Semantic Similarity between 2 articles
@@ -243,14 +263,33 @@ class QuantAnaIns:
             return None
     
     def sentiment_analysis(self, article_text):
-        "Detecting the sentiment in the article & measure how strong it's"
-        sentiment_result = self.sentiment_model(article_text)
-        sentiment_label = sentiment_result[0]['label']
-        sentiment_score = sentiment_result[0]['score']
-        return {
-            "sentiment_label": sentiment_label,  # NEG: Tiêu cực, POS: Tích cực, NEU: Trung tính
-            "sentiment_score": sentiment_score
+        payload = {
+            "inputs": article_text
         }
+        try:
+            response = self.runtime.invoke_endpoint(
+                EndpointName = self.sentiment_endpoint_name,
+                ContentType= 'application/json',
+                Body=json.dumps(payload)
+            )
+            sentiment_result = json.loads(response['Body'].read())[0]  # result = list of token embeddings
+            sentiment_label = sentiment_result['label']
+            sentiment_score = sentiment_result['score']
+            return {
+                "sentiment_label": sentiment_label,  # NEG: Tiêu cực, POS: Tích cực, NEU: Trung tính
+                "sentiment_score": sentiment_score
+                }
+        except Exception as e:
+            print(f"[ERROR] SageMaker Invocation Failed: {str(e)}")
+            return None
+        # "Detecting the sentiment in the article & measure how strong it's"
+        # sentiment_result = self.sentiment_model(article_text)
+        # sentiment_label = sentiment_result[0]['label']
+        # sentiment_score = sentiment_result[0]['score']
+        # return {
+        #     "sentiment_label": sentiment_label,  # NEG: Tiêu cực, POS: Tích cực, NEU: Trung tính
+        #     "sentiment_score": sentiment_score
+        # }
 
     def translation_from_Vie_to_Eng(self, text :str):
         """
@@ -326,6 +365,13 @@ class QuantAnaIns:
         """
         return " ".join(tokens).replace("_", "")
 
+    def normalize_result(self, value):
+        # Check if the value is a numpy float type
+        if isinstance(value, np.float32) or isinstance(value, np.float64):
+            return float(value) * 100  # Return the score
+        else:
+            return float(value) * 100  # Return the raw value as a string
+
     def detect_toxicity(self, article_text: str):
         """Detects toxicity and misinformation in the article.
            Parameter: article_text (Vietnamese String need to be pre-process and segmentized)
@@ -335,16 +381,16 @@ class QuantAnaIns:
         """
         try:
             tokenized_text = self.rdrsegmenter.tokenize(article_text)
-            pre_processed_sentences = self.combine_tokens(tokenized_text)
+            pre_processed_sentences = self.combine_tokens(tokenized_text[0])
             translation = self.translation_from_Vie_to_Eng(pre_processed_sentences)
-            toxicity_score = Detoxify("multilingual").predict(article_text)
+            toxicity_score = Detoxify("multilingual").predict(translation)
 
             return {
-                "Tính Độc Hại": toxicity_score["toxicity"],
-                "Tính Xúc Phạm": toxicity_score["insult"],
-                "Tính Đe Doạ": toxicity_score["threat"],
-                "Công kích danh tính": toxicity_score["identity_attack"],
-                "Mức Độ Thô Tục":  toxicity_score["obscene"]
+                "Tính Độc Hại": self.normalize_result(toxicity_score["toxicity"]),
+                "Tính Xúc Phạm": self.normalize_result(toxicity_score["insult"]),
+                "Tính Đe Doạ": self.normalize_result(toxicity_score["threat"]),
+                "Công kích danh tính": self.normalize_result(toxicity_score["identity_attack"]),
+                "Mức Độ Thô Tục": self.normalize_result(toxicity_score["obscene"])
             }
         except Exception as e:
             # Log the exception with details for debugging
@@ -362,14 +408,16 @@ class QuantAnaIns:
     def terminate(self):
         # Terminate this - but this would stop the end-point (notice this be-careful)
         try:
-            self.sm_client.delete_endpoint(EndpointName='sentence-feature-extract')
+            self.sm_client.delete_endpoint(EndpointName=self.endpoint_name)
+            self.sm_client.delete_endpoint(EndpointName=self.sentiment_endpoint_name)
             print("Endpoint deleted.")
         except self.sm_client.excteameptions.ClientError as e:
             print("Endpoint deletion skipped (maybe doesn't exist):", e)
 
         # Delete Endpoint Config
         try:
-            self.sm_client.delete_endpoint_config(EndpointConfigName='sentence-feature-extract')
+            self.sm_client.delete_endpoint_config(EndpointConfigName=self.endpoint_name)
+            self.sm_client.delete_endpoint(EndpointName=self.sentiment_endpoint_name)
             print("Endpoint config deleted.")
         except self.sm_client.exceptions.ClientError as e:
             print("Endpoint config deletion skipped:", e)

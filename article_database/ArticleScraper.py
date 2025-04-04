@@ -20,6 +20,7 @@ news_article = {
     "url": "https://vnexpress.net/hoc-de-song-hay-hoc-de-thi-4808158.html"
 }
 """
+NEUTRAL=0
 class ArticleScraper:
 
     def __init__(self):
@@ -47,6 +48,8 @@ class ArticleScraper:
                 "image_url": article.image_url or "No image available",
                 "url": article.url or "No URL available",
                 "date_download": article.date_download.strftime("%Y-%m-%d") if article.date_download is not None else "Unknown",
+                "upvote": 0,  # Initialize upvote count
+                "vote_type": NEUTRAL,  # Initialize vote type
             }
         except Exception as e:
             print(f"❌ Failed to scrape {url}: {e}")
@@ -92,5 +95,7 @@ class ArticleScraper:
             "image_url": article.image_url or "No image available",
             "url": article.url or "No URL available",
             "date_download": article.date_download.strftime("%Y-%m-%d") if article.date_download is not None else "Unknown",
+            "upvote": 0,  # Initialize upvote count
+            "vote_type": NEUTRAL,  # Initialize vote type
         }
 

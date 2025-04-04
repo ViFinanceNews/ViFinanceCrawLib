@@ -21,15 +21,6 @@ from dotenv import load_dotenv
 import google.generativeai as genai
 import os
 from pathlib import Path
-import sys
-import os
-import sys
-import boto3
-from pathlib import Path
-from vncorenlp import VnCoreNLP
-import sagemaker
-from sagemaker.huggingface import HuggingFaceModel
-from dotenv import load_dotenv
 
 class QuantAnaIns:
     def __init__(self):
@@ -235,13 +226,13 @@ class QuantAnaIns:
                     score = util.pytorch_cos_sim(src1, src2).item()
                     row.append(score)
                 intersource.append(row)
-            if display_table:
-                if query_article:
-                    # === 1. Query-to-Source Similarity ===
-                    query_df = pd.DataFrame({
-                        'Source': [f'Source_{i+1}' for i in range(len(query_to_sources))],
-                        'Matching_to_Query': query_to_sources
-                    })
+            if display_table:            if display_table:
+                    if query_article:
+                        # === 1. Query-to-Source Similarity ===
+                        query_df = pd.DataFrame({
+                            'Source': [f'Source_{i+1}' for i in range(len(query_to_sources))],
+                            'Matching_to_Query': query_to_sources
+                        })
 
                     print("=== Query to Sources Similarity ===")
                     print(query_df.round(3))  # Rounded to 3 decimal places

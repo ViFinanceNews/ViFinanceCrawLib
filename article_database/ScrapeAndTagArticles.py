@@ -5,8 +5,9 @@ import os
 import pprint
 import redis
 import json
-
+NEUTRAL = 0
 class ScrapeAndTagArticles:
+    
 
     def __init__(self):
         load_dotenv()
@@ -38,8 +39,8 @@ class ScrapeAndTagArticles:
                 "date_publish": article.get("date_publish"),
                 "main_text": article.get("main_text"),
                 "tags": tags,  # Assign generated tags
-                "upvote": article.get("upvote"),
-                "vote_type":article.get("vote_type")
+                "upvotes": article.get("upvotes", 0),
+                "vote_type": article.get("vote_type", NEUTRAL)  # Default to NEUTRAL if not present
             }
 
             # Store in Redis
@@ -47,6 +48,7 @@ class ScrapeAndTagArticles:
 
             url_list.append(article["url"])
 
+        print(url_list)
         return url_list      
     
     #move from redis to database
@@ -66,7 +68,9 @@ class ScrapeAndTagArticles:
             "title": redis_article["title"],
             "url": redis_article["url"],
             "image_url": redis_article["image_url"],
-            "date_publish": redis_article["date_publish"]
+            "date_publish": redis_article["date_publish"],
+            "upvotes": redis_article["upvotes"],
+            "vote_type": redis_article["vote_type"]
         }
         insert_query = "INSERT INTO article (author, title, url, image_url, date_publish) OUTPUT INSERTED.article_id VALUES (?, ?, ?, ?, ?)"
         article_id_row = self.db.execute_query(insert_query, params=(article_data["author"], article_data["title"], article_data["url"], article_data["image_url"], article_data["date_publish"]), 
@@ -155,7 +159,10 @@ class ScrapeAndTagArticles:
                 "image_url": scraped_article[0].get("image_url"),
                 "date_publish": scraped_article[0].get("date_publish"),
                 "main_text": scraped_article[0].get("main_text"),
+                "upvotes": scraped_article[0].get("upvotes", 0),
+                "vote_type": NEUTRAL
             }
+            
 
             # 🔄 Store in Redis for future use (TTL: 1 hour)
             self.redis_client.set(url, json.dumps(redis_article), ex=3600)

@@ -5,6 +5,8 @@ import os
 import pprint
 import redis
 import json
+import time
+import logging
 NEUTRAL = 0
 class ScrapeAndTagArticles:
     
@@ -170,6 +172,20 @@ class ScrapeAndTagArticles:
             print(f"✅ Scraped and cached: {redis_article['title']}")
 
         return redis_article  # ✅ Returns full article data
+    
+    def move_query(self, user_id,query):
+        """
+        Move the query to the database.
+
+        Args:
+            query (str): The query to be moved.
+        """
+        # Connect to the database
+        self.db.connect()
+
+        insert_query = "INSERT INTO user_history (user_id,user_history,user_history_time) VALUES (?,?,?)"
+        current_time = time.strftime("%Y-%m-%d %H:%M:%S")
+        self.db.execute_query(insert_query, params=(user_id, query, current_time), commit=True)
 
 # if __name__=="__main__":
 #     processor = ScrapeAndTagArticles()

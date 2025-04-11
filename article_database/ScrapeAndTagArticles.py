@@ -49,8 +49,7 @@ class ScrapeAndTagArticles:
             self.redis_client.set(article["url"], json.dumps(article_data), ex=3600)
 
             url_list.append(article["url"])
-
-        print(url_list)
+            
         return url_list      
     
     #move from redis to database

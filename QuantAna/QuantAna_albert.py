@@ -6,14 +6,12 @@
 
 """
 import sys
-from sagemaker.huggingface import HuggingFaceModel
 from ViFinanceCrawLib.article_database.TextCleaning import TextCleaning as tc
 import torch
 from detoxify import Detoxify
 from sentence_transformers import util
-import boto3
-import sagemaker
-import json
+from transformers import pipeline, AutoTokenizer, AutoModel
+from typing import List
 import numpy as np
 import pandas as pd
 from vncorenlp.vncorenlp import VnCoreNLP
@@ -21,30 +19,34 @@ from dotenv import load_dotenv
 import google.generativeai as genai
 import os
 from pathlib import Path
+from sklearn.metrics.pairwise import cosine_similarity
 import re
 
-class QuantAnaIns:
-    def __init__(self):
+class QuantAnaInsAlbert:
+    
+    def __init__(self, device="cpu"):
         load_dotenv()
         genai.configure(api_key=os.getenv("API_KEY"))
 
         self.model_name = 'gemini-2.0-flash-thinking-exp-01-21'
         self.translator_model = genai.GenerativeModel(self.model_name)
-        self.endpoint_name = 'sentence-feature-extract'
-        self.sentiment_endpoint_name = 'multi-ling-sentiment-analysis'
-        self.runtime = boto3.client('sagemaker-runtime')
-        self.sm_client = boto3.client('sagemaker')
-        self.HF_MODEL_ID_FEATURE_EXTRACT = "Fsoft-AIC/videberta-base"
-        self.HF_TASK_FEATURE = "feature-extraction"
-        self.HF_MODEL_ID_SENTIMENT = "tabularisai/multilingual-sentiment-analysis"
-        self.HF_TASK_SENTIMENT = 'text-classification'
+        self.device = device or ("cuda" if torch.cuda.is_available() else "cpu")
+        
+        # Sentiment pipeline
+        self.sentiment_pipeline = pipeline(
+            "sentiment-analysis", 
+            model="tabularisai/multilingual-sentiment-analysis", 
+            device=0 if self.device == "cuda" else -1
+        )
+        
+        # Embedding model + tokenizer
+        self.embed_model_name = "cservan/multilingual-albert-base-cased-32k"
+        self.embed_tokenizer = AutoTokenizer.from_pretrained(self.embed_model_name)
+        self.embed_model = AutoModel.from_pretrained(self.embed_model_name).to(self.device)
+
+        
         self._set_up_vncorenlp()
-        self._set_up_sagemaker_role()
-
-        # Deploy the models if they don't exist
-        self._deploy_endpoint(self.endpoint_name, self.HF_MODEL_ID_FEATURE_EXTRACT, self.HF_TASK_FEATURE)
-        self._deploy_endpoint(self.sentiment_endpoint_name, self.HF_MODEL_ID_SENTIMENT, self.HF_TASK_SENTIMENT)
-
+  
     def _set_up_vncorenlp(self):
         filename = "VnCoreNLP/VnCoreNLP-1.1.1.jar"
         file_path = Path.cwd() / filename
@@ -53,115 +55,61 @@ class QuantAnaIns:
             sys.exit(1)
         self.rdrsegmenter = VnCoreNLP(str(file_path), annotators="wseg", max_heap_size='-Xmx500m')
 
-    def _set_up_sagemaker_role(self):
-        try:
-            self.role = sagemaker.get_execution_role()
-        except ValueError:
-            iam = boto3.client('iam')
-            self.role = iam.get_role(RoleName='sagemaker_execution_role')['Role']['Arn']
-
-    def _check_endpoint_exists(self, endpoint_name):
-        try:
-            response = self.sm_client.describe_endpoint(EndpointName=endpoint_name)
-            status = response['EndpointStatus']
-            if status in ['InService', 'Creating']:
-                print(f"Endpoint '{endpoint_name}' already exists with status: {status}.")
-                return True
-            else:
-                print(f"Endpoint exists but status is {status}. Recreating...")
-                return False
-        except self.sm_client.exceptions.ClientError:
-            print(f"Endpoint '{endpoint_name}' does not exist. Deploying new endpoint.")
-            return False
-
-    def _check_model_exists(self, endpoint_name):
-        try:
-            response = self.sm_client.list_models()
-            model_names = [model["ModelName"] for model in response.get("Models", [])]
-            if endpoint_name in model_names:
-                return True
-            else:
-                print(f"Model '{endpoint_name}' not found in SageMaker.")
-                return False
-        except self.sm_client.exceptions.ClientError:
-            print(f"Failed to retrieve models '{endpoint_name}' from SageMaker. Creating new model.")
-            return False
-
-    def _deploy_endpoint(self, endpoint_name, model_id, task):
-        endpoint_exists = self._check_endpoint_exists(endpoint_name)
-        if not endpoint_exists:
-            model_exists = self._check_model_exists(endpoint_name)
-            if not model_exists:
-                hub = {
-                    'HF_MODEL_ID': model_id,
-                    'HF_TASK': task
-                }
-                huggingface_model = HuggingFaceModel(
-                    transformers_version='4.37.0',
-                    pytorch_version='2.1.0',
-                    py_version='py310',
-                    env=hub,
-                    role=self.role,
-                    name=endpoint_name
-                )
-                self.model = huggingface_model.deploy(
-                    initial_instance_count=1,
-                    instance_type='ml.t2.medium',
-                    endpoint_name=endpoint_name
-                )
-                print(f"New endpoint '{endpoint_name}' deployed and ready.")
-            else:
-                print(f"Model '{endpoint_name}' exists - deploying new endpoint.")
-        else:
-            print(f"Skipping deployment, using existing endpoint '{endpoint_name}'.")
-
-        print("QuantAna created successfully.")
-
-    def compute_semantic_similarity(self, article1, article2):
-        """Calculate Semantic Similarity between 2 articles
-            article1 & article2: str
+    def get_embeddings(self, texts: List[str]):
         """
-        # Batch input
+        Get sentence embeddings for a list of texts using a locally loaded transformer model.
+        Uses dynamic batching and mean pooling over token embeddings.
+        """
+        num_texts = len(texts)
+
+        # Dynamically choose a reasonable even batch size
+        if num_texts <= 2:
+            batch_size = num_texts
+        else:
+            batch_size = max(2, (num_texts // 4) * 2)  # Ensure it's even
+
+        all_embeddings = []
+
+        for i in range(0, num_texts, batch_size):
+            batch = texts[i:i + batch_size]
+
+            # Tokenize the batch with padding and truncation
+            inputs = self.embed_tokenizer(batch, return_tensors="pt", padding=True, truncation=True)
+
+            # Forward pass (no gradients needed)
+            with torch.no_grad():
+                outputs = self.embed_model(**inputs)
+
+            # Mean pooling over the token dimension (dim=1)
+            batch_embeddings = outputs.last_hidden_state.mean(dim=1)  # shape: (batch_size, hidden_dim)
+
+            all_embeddings.append(batch_embeddings)
+
+        # Concatenate all batched embeddings into one tensor
+        return torch.cat(all_embeddings, dim=0)
+    
+    def compute_semantic_similarity(self, article1: str, article2: str) -> float:
+        """Calculate Semantic Similarity between 2 articles using ALBERT embeddings"""
         article_list = [article1, article2]
-        
-        payload = {
-            "inputs": article_list
-        }
 
-        try:
-            # Single API call for both articles
-            response = self.runtime.invoke_endpoint(
-                EndpointName=self.endpoint_name,
-                ContentType='application/json',
-                Body=json.dumps(payload)
-            )
-            result = json.loads(response['Body'].read())  # result = list of token embeddings
+        # Step 1: Get embeddings locally
+        embeddings = self.get_embeddings(article_list)  # shape: [2, hidden_dim]
 
-            embeddings = []
-            for token_embedding in result:
-                token_embedding = np.squeeze(np.array(token_embedding), axis=0)  # Remove batch dimension
-                sentence_embedding = np.mean(token_embedding, axis=0)  # Mean pooling
-                embeddings.append(sentence_embedding)
+        # Step 2: Compute cosine similarity
+        similarity = cosine_similarity([embeddings[0]], [embeddings[1]])[0][0]
 
-            # Convert to torch tensors, ensure shapes are [1, embedding_dim]
-            emb_tensor1 = torch.tensor(embeddings[0]).unsqueeze(0)
-            emb_tensor2 = torch.tensor(embeddings[1]).unsqueeze(0)
-            similarity_score = util.pytorch_cos_sim(emb_tensor1, emb_tensor2).item()
-            return similarity_score
-
-        except Exception as e:
-            print(f"[ERROR] SageMaker Invocation Failed: {str(e)}")
-            return None
+        return float(similarity)
 
     def compute_multi_semantic_similarity(self, source_articles, query_article=None, display_table=False):
         """
         Calculate Semantic Similarity:
-        - (Optional) Query article vs each source article
-        - Pairwise similarity between source articles (intersource)
+        - Between query_article and each source article (if provided)
+        - Pairwise similarity between source articles
 
         Args:
             source_articles (List[str]): List of source article strings
             query_article (str, optional): Query article string. Default is None.
+            display_table (bool): Whether to print similarity tables
 
         Returns:
             dict: {
@@ -170,88 +118,61 @@ class QuantAnaIns:
             }
         """
         try:
-            embeddings = []
+            # Step 1: Prepare text batch
+            all_articles = source_articles.copy()
+            if query_article:
+                all_articles.insert(0, query_article)
 
-            # Handle chunking if too many source articles
-            
-            chunk_size = 5
-            source_chunks = [source_articles[i:i+chunk_size] for i in range(0, len(source_articles), chunk_size)]
+            # Step 2: Generate embeddings locally using Hugging Face
+            embeddings = self.get_embeddings(all_articles)  # List[np.ndarray], each of shape (hidden_dim,)
 
-            # If query exists, first call includes query
-            for idx, chunk in enumerate(source_chunks):
-                if idx == 0 and query_article:
-                    input_batch = [query_article] + chunk
-                else:
-                    input_batch = chunk
-
-                payload = {
-                    "inputs": input_batch
-                }
-
-                # API call
-                response = self.runtime.invoke_endpoint(
-                    EndpointName=self.endpoint_name,
-                    ContentType='application/json',
-                    Body=json.dumps(payload)
-                )
-                result = json.loads(response['Body'].read())  # token embeddings list
-
-                # Pooling embeddings
-                for token_embedding in result:
-                    token_embedding = np.squeeze(np.array(token_embedding), axis=0)  # Remove batch dim
-                    sentence_embedding = np.mean(token_embedding, axis=0)  # Mean pooling
-                    embeddings.append(sentence_embedding)
-
-            # Convert to torch tensors
-            embedding_tensors = [torch.tensor(e).unsqueeze(0) for e in embeddings]
-
-            # Process similarity scores
+            # Step 3: Process similarity scores
             query_to_sources = None
             intersource_start_idx = 0
 
             if query_article:
-                query_tensor = embedding_tensors[0]
-                source_tensors = embedding_tensors[1:]
+                query_embedding = embeddings[0].reshape(1, -1)  # shape: (1, dim)
+                source_embeddings = [e.reshape(1, -1) for e in embeddings[1:]]
                 query_to_sources = [
-                    util.pytorch_cos_sim(query_tensor, src).item()
-                    for src in source_tensors
+                    float(cosine_similarity(query_embedding, src)[0][0])
+                    for src in source_embeddings
                 ]
-                intersource_start_idx = 1  # Skip query in intersource
+                intersource_start_idx = 1
+            else:
+                source_embeddings = [e.reshape(1, -1) for e in embeddings]
 
-            # Pairwise intersource similarity
-            source_tensors = embedding_tensors[intersource_start_idx:]
+            # Step 4: Pairwise source-source similarity matrix
             intersource = []
-            for i, src1 in enumerate(source_tensors):
+            for i, emb1 in enumerate(source_embeddings):
                 row = []
-                for j, src2 in enumerate(source_tensors):
-                    score = util.pytorch_cos_sim(src1, src2).item()
-                    row.append(score)
+                for j, emb2 in enumerate(source_embeddings):
+                    sim = float(cosine_similarity(emb1, emb2)[0][0])
+                    row.append(sim)
                 intersource.append(row)
+
+            # Step 5: Optional Display
             if display_table:
                 if query_article:
-                    # === 1. Query-to-Source Similarity ===
                     query_df = pd.DataFrame({
                         'Source': [f'Source_{i+1}' for i in range(len(query_to_sources))],
                         'Matching_to_Query': query_to_sources
                     })
-
                     print("=== Query to Sources Similarity ===")
-                    print(query_df.round(3))  # Rounded to 3 decimal places
+                    print(query_df.round(3))
                     print("\n")
 
-                # === 2. Intersource Similarity Matrix ===
-                labels = [f"Source_{i+1}" for i in range(len(intersource))]
-                matrix_df = pd.DataFrame(np.array(intersource), index=labels, columns=labels)
-
+                labels = [f"Source_{i+1}" for i in range(len(source_embeddings))]
+                matrix_df = pd.DataFrame(intersource, index=labels, columns=labels)
                 print("=== Intersource Similarity Matrix ===")
                 print(matrix_df.round(3))
+
             return {
                 'query_to_sources': query_to_sources,
                 'intersource': intersource
             }
 
         except Exception as e:
-            print(f"[ERROR] SageMaker Invocation Failed: {str(e)}")
+            print(f"[ERROR] Local Semantic Similarity Failed: {str(e)}")
             return None
     
     def generative_extractive(self, article_text):
@@ -287,24 +208,19 @@ class QuantAnaIns:
     def sentiment_analysis(self, article_text):
         article_text = re.sub(r"\[Câu \d+\]\s*", "", article_text)
         print(article_text)
-        payload = {
-            "inputs": article_text
-        }
         try:
-            response = self.runtime.invoke_endpoint(
-                EndpointName = self.sentiment_endpoint_name,
-                ContentType= 'application/json',
-                Body=json.dumps(payload)
-            )
-            sentiment_result = json.loads(response['Body'].read())[0]  # result = list of token embeddings
-            sentiment_label = sentiment_result['label']
-            sentiment_score = sentiment_result['score']
+            result = self.sentiment_pipeline(article_text)[0]  # Only take top label
+
+            sentiment_label = result['label']  # e.g., 'NEGATIVE', 'POSITIVE', 'NEUTRAL'
+            sentiment_score = result['score']
+
             return {
-                "sentiment_label": sentiment_label,  # NEG: Tiêu cực, POS: Tích cực, NEU: Trung tính
+                "sentiment_label": sentiment_label,
                 "sentiment_score": sentiment_score
-                }
+            }
+
         except Exception as e:
-            print(f"[ERROR] SageMaker Invocation Failed: {str(e)}")
+            print(f"[ERROR] Sentiment Analysis Failed: {str(e)}")
             return None
        
     def translation_from_Vie_to_Eng(self, text :str):
@@ -399,8 +315,8 @@ class QuantAnaIns:
             tokenized_text = self.rdrsegmenter.tokenize(article_text)
             pre_processed_sentences = self.combine_tokens(tokenized_text[0])
             translation = self.translation_from_Vie_to_Eng(pre_processed_sentences)
+            
             toxicity_score = Detoxify("multilingual").predict(translation)
-
             return {
                 "Tính Độc Hại": self.normalize_result(toxicity_score["toxicity"]),
                 "Tính Xúc Phạm": self.normalize_result(toxicity_score["insult"]),
@@ -421,23 +337,4 @@ class QuantAnaIns:
                 "details": str(e)
             }
     
-    def terminate(self):
-        # Terminate this - but this would stop the end-point (notice this be-careful)
-        try:
-            self.sm_client.delete_endpoint(EndpointName=self.endpoint_name)
-            self.sm_client.delete_endpoint(EndpointName=self.sentiment_endpoint_name)
-            print("Endpoint deleted.")
-        except self.sm_client.excteameptions.ClientError as e:
-            print("Endpoint deletion skipped (maybe doesn't exist):", e)
-
-        # Delete Endpoint Config
-        try:
-            self.sm_client.delete_endpoint_config(EndpointConfigName=self.endpoint_name)
-            self.sm_client.delete_endpoint(EndpointName=self.sentiment_endpoint_name)
-            print("Endpoint config deleted.")
-        except self.sm_client.exceptions.ClientError as e:
-            print("Endpoint config deletion skipped:", e)
-        
-
-
-    
+   

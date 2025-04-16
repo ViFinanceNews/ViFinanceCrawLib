@@ -337,4 +337,28 @@ class QuantAnaInsAlbert:
                 "details": str(e)
             }
     
+    def obsence_check(self,query):
+        """
+        Check the obscene level of the query
+        """
+        try:
+            query=self.translation_from_Vie_to_Eng(query)
+            prompt = f"""
+            Check the query for obscene content, this includes:
+            - Offensive language
+            - Hate speech
+            - Harassment
+            - Profanity
+            - Threats
+            Return "True" if the query contains obscene content, otherwise return "False"
+            """
+            response = self.translator_model.generate_content(prompt)
+            if not hasattr(response, "text") or not response.text:
+                print("⚠️ Warning: Empty response from AI model.")
+                return False
+
+            return response.text.strip().lower() == "true"
+        except Exception as e:
+            print(f"❌ Error in obsence_check: {e}")
+            return False
    

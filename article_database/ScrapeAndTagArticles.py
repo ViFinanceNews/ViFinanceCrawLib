@@ -53,7 +53,7 @@ class ScrapeAndTagArticles:
         return url_list      
     
     #move from redis to database
-    def move_to_database(self,url):
+    def move_to_database(self,url,user_id):
         self.db.connect()
         # Step 1: Retrieve article from Redis
         redis_article = self.redis_client.get(url)
@@ -73,8 +73,8 @@ class ScrapeAndTagArticles:
             "upvotes": redis_article["upvotes"],
             "vote_type": redis_article["vote_type"]
         }
-        insert_query = "INSERT INTO article (author, title, url, image_url, date_publish) OUTPUT INSERTED.article_id VALUES (?, ?, ?, ?, ?)"
-        article_id_row = self.db.execute_query(insert_query, params=(article_data["author"], article_data["title"], article_data["url"], article_data["image_url"], article_data["date_publish"]), 
+        insert_query = "INSERT INTO article (author, title, url, image_url, date_publish) OUTPUT INSERTED.article_id VALUES (?, ?, ?, ?, ?, ?)"
+        article_id_row = self.db.execute_query(insert_query, params=(article_data["author"], article_data["title"], article_data["url"], article_data["image_url"], article_data["date_publish"],article_data["upvotes"]), 
                                                fetch_one=True, commit=True)
         
         if article_id_row:
@@ -102,6 +102,11 @@ class ScrapeAndTagArticles:
                 map_query = "INSERT INTO article_tag (article_id, tag_id) VALUES (?, ?)"
                 self.db.execute_query(map_query, params=(sql_article_id, tag_id), commit=True)
                 print(f"🔗 Mapped Article {sql_article_id} with Tag {tag_id}")
+
+            # Step 5: Insert upvotes in the account_article table in the article_id row
+            insert_upvote_query = "INSERT INTO account_article (account_id, article_id, upvotes) VALUES (?, ?, ?)"
+            self.db.execute_query(insert_upvote_query, params=(user_id, sql_article_id, redis_article["vote_type"]), commit=True)
+
 
     def get_multiple_article(self, urls):
         """

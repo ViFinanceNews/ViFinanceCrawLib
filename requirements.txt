@@ -24,3 +24,6 @@ networkx
 numpy
 pandas
 spacy
+flask-cors
+hvac
+gunicorn

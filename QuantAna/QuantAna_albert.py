@@ -10,7 +10,7 @@ from ViFinanceCrawLib.article_database.TextCleaning import TextCleaning as tc
 import torch
 from detoxify import Detoxify
 from sentence_transformers import util
-from transformers import pipeline, AutoTokenizer, AutoModel
+from transformers import pipeline, AutoTokenizer, AutoModel, AutoModelForSequenceClassification
 from typing import List
 import numpy as np
 import pandas as pd
@@ -24,7 +24,7 @@ import re
 
 class QuantAnaInsAlbert:
     
-    def __init__(self, device="cpu"):
+    def __init__(self, device="cpu", model_root="/app/models/hub"):
         load_dotenv()
         genai.configure(api_key=os.getenv("API_KEY"))
 
@@ -32,21 +32,76 @@ class QuantAnaInsAlbert:
         self.translator_model = genai.GenerativeModel(self.model_name)
         self.device = device or ("cuda" if torch.cuda.is_available() else "cpu")
         
-        # Sentiment pipeline
-        self.sentiment_pipeline = pipeline(
-            "sentiment-analysis", 
-            model="tabularisai/multilingual-sentiment-analysis", 
-            device=0 if self.device == "cuda" else -1
-        )
-        
-        # Embedding model + tokenizer
-        self.embed_model_name = "cservan/multilingual-albert-base-cased-32k"
-        self.embed_tokenizer = AutoTokenizer.from_pretrained(self.embed_model_name)
-        self.embed_model = AutoModel.from_pretrained(self.embed_model_name).to(self.device)
+        using_volume = os.path.isdir(model_root) and len(os.listdir(model_root)) > 0
+        print(f"[INFO] using_volume = {using_volume}")
 
-        
+        if not using_volume:
+            # Sentiment pipeline
+            model_name = "tabularisai/multilingual-sentiment-analysis"
+            tokenizer = AutoTokenizer.from_pretrained(model_name)
+            model = AutoModelForSequenceClassification.from_pretrained(model_name)
+            self.sentiment_pipeline = pipeline(
+                "sentiment-analysis", 
+                model=model, 
+                device=0 if self.device == "cuda" else -1,
+                tokenizer=tokenizer
+            )
+            
+            # Embedding model + tokenizer
+            self.embed_model_name = "cservan/multilingual-albert-base-cased-32k"
+            self.embed_tokenizer = AutoTokenizer.from_pretrained(self.embed_model_name)
+            self.embed_model = AutoModel.from_pretrained(self.embed_model_name).to(self.device)
+            self.toxicity_model = Detoxify(model_type="original-small")
+        else:
+            root_model_dir = model_root
+            albert_folder = self.find_model_folder("models--cservan--multilingual-albert-base-cased-32k", root_model_dir)
+            sentiment_model_folder = self.find_model_folder("models--tabularisai--multilingual-sentiment-analysis", root_model_dir)
+            if albert_folder is None or sentiment_model_folder is None:
+                raise Exception("Model folder(s) not found!")
+            self.embed_tokenizer =AutoTokenizer.from_pretrained(albert_folder)
+            self.embed_model = AutoModel.from_pretrained(albert_folder)
+
+            self.sentiment_pipeline = pipeline(
+                "sentiment-analysis", 
+                model=sentiment_model_folder, 
+                device=0 if self.device == "cuda" else -1,
+                tokenizer=sentiment_model_folder
+            )
+            toxicity_path = self.find_model_folder_checkpoint_keyword(keyword="original-albert", root_model_dir=root_model_dir)
+            if toxicity_path is not None:
+                model_name = "original-albert-0e1d6498.ckpt"
+                self.toxicity_model = Detoxify(model_type="original-small", checkpoint=toxicity_path + "/" + model_name)
+            else:
+                self.toxicity_model = Detoxify(model_type="original-small")
+
         self._set_up_vncorenlp()
   
+
+    def find_model_folder_checkpoint_keyword(self, keyword, root_model_dir):
+        """
+        Recursively search for the first folder that contains a checkpoint (.ckpt) file
+        whose filename includes the given keyword.
+
+        Args:
+            keyword (str): Keyword to match in the checkpoint filename
+            root_model_dir (str): Root directory to search within
+
+        Returns:
+            str or None: The full path to the matching folder, or None if not found
+        """
+        for root, dirs, files in os.walk(root_model_dir):
+            for file in files:
+                if file.endswith(".ckpt") and keyword.lower() in file.lower():
+                    return root
+        return None
+    
+    def find_model_folder(self, model_name, root_model_dir):
+        for root, dirs, files in os.walk(root_model_dir):
+            # Check if 'config.json' exists (which indicates a valid Hugging Face model folder)
+            if "config.json" in files and model_name in root:
+                return root
+        return None
+    
     def _set_up_vncorenlp(self):
         filename = "VnCoreNLP/VnCoreNLP-1.1.1.jar"
         file_path = Path.cwd() / filename
@@ -316,7 +371,7 @@ class QuantAnaInsAlbert:
             pre_processed_sentences = self.combine_tokens(tokenized_text[0])
             translation = self.translation_from_Vie_to_Eng(pre_processed_sentences)
             
-            toxicity_score = Detoxify("multilingual").predict(translation)
+            toxicity_score = self.toxicity_model.predict(translation)
             return {
                 "Tính Độc Hại": self.normalize_result(toxicity_score["toxicity"]),
                 "Tính Xúc Phạm": self.normalize_result(toxicity_score["insult"]),

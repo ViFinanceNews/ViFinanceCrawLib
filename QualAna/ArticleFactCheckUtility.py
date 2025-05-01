@@ -546,6 +546,35 @@ class ArticleFactCheckUtility():
 
         return all_tags
 
+    def generate_brief_descriptions_batch(self, articles: List[str]) -> List[str]:
+        all_descriptions = []
+
+        # Create the prompt for batch processing
+        article_text = ''.join([f'Bài viết {i+1}: {article}\n' for i, article in enumerate(articles)])
+
+        prompt = (
+            "Dưới đây là một loạt bài viết:\n\n"
+            f"{article_text}\n"
+            "Hãy viết một đoạn mô tả ngắn [CHỈ ĐƯỢC từ 10 đến 50 từ] cho mỗi bài viết. Mô tả cần nêu bật nội dung chính một cách súc tích, rõ ràng và không bao gồm các yếu tố dư thừa hoặc lặp lại.\n"
+            "Định dạng kết quả như sau, chỉ bao gồm nội dung mô tả, không thêm giải thích hoặc biểu cảm:\n"
+            "Bài viết 1: [mô tả ngắn]\n"
+            "Bài viết 2: [mô tả ngắn]\n"
+            "..."
+        )
+
+        # Generate content from model
+        response = self.model.generate_content(prompt)
+        raw_responses = response.text.strip().split('\n')
+
+        # Process each article's short description
+        for raw_desc in raw_responses:
+            if ':' in raw_desc:
+                _, desc_str = raw_desc.split(':', 1)
+                cleaned_desc = desc_str.strip()
+                all_descriptions.append(cleaned_desc)
+
+        return all_descriptions
+
     def process_articles_in_batches(self, articles: List[str], predefined_tags: Optional[List[str]] = None, batch_size: int = 5):
         all_results = []
         total_articles = len(articles)

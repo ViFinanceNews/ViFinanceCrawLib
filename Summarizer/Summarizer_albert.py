@@ -55,11 +55,24 @@ class SummarizerAlbert:
             except Exception as e:
                 print(f"Error reading stopwords file: {e}. Using default stopwords only.")
         
-        print("🔍 Loading local Hugging Face model for feature extraction...")
-        self.tokenizer = AutoTokenizer.from_pretrained(extractive_model)
-        self.model = AutoModel.from_pretrained(extractive_model)
+        model_root="/app/models/hub"
+        using_volume = os.path.isdir(model_root) and len(os.listdir(model_root)) > 0
+        print(f"[INFO] using_volume = {using_volume}")
+        if not using_volume:
+            print("🔍 Install model from Hugging Face model for feature extraction...")
+            self.tokenizer = AutoTokenizer.from_pretrained(extractive_model)
+            self.model = AutoModel.from_pretrained(extractive_model)
+        else:
+            print("🔍 Loading local Hugging Face model for feature extraction...")
+            albert_folder = self.find_model_folder("models--cservan--multilingual-albert-base-cased-32k", root_model_dir =model_root)
+            if albert_folder is None:
+                raise Exception("Albert Model folder(s) not found!")
+            self.tokenizer = AutoTokenizer.from_pretrained(albert_folder)
+            self.model = AutoModel.from_pretrained(albert_folder)
+            print("✅ Extractive model loaded locally.")
+
         self.model.eval()  # Set model to eval mode
-        print("✅ Extractive model loaded locally.")
+        
 
         # setting up with abstractive model
         load_dotenv()
@@ -68,6 +81,13 @@ class SummarizerAlbert:
         self.qa_utility = ArticleFactCheckUtility()
         return
 
+    def find_model_folder(self, model_name, root_model_dir):
+        for root, dirs, files in os.walk(root_model_dir):
+            # Check if 'config.json' exists (which indicates a valid Hugging Face model folder)
+            if "config.json" in files and model_name in root:
+                return root
+        return None
+    
     def text_normalize(self, text):
         return text.strip().lower()  # Basic normalization (can be extended)
 

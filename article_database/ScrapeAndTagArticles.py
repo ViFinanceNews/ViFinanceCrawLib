@@ -1,21 +1,13 @@
-from ViFinanceCrawLib.article_database.Database import Database
+from ViFinanceCrawLib.article_database.DataBaseCockroach import Database
 from ViFinanceCrawLib.QualAna.ArticleFactCheckUtility import ArticleFactCheckUtility
 from dotenv import load_dotenv
 import os
-import pprint
 import redis
 import json
-import time
-import logging
 NEUTRAL = 0
 class ScrapeAndTagArticles:
     
-
     def __init__(self):
-        load_dotenv()
-        connection_str = os.getenv("CONNECTION_STR")
-        
-        self.db = Database(connection_string=connection_str)
         self.redis_client = redis.Redis(
             host=os.getenv("REDIS_HOST"),
             port=os.getenv("REDIS_PORT"),
@@ -28,11 +20,12 @@ class ScrapeAndTagArticles:
         # Step 1: Scrape articles
         articles = self.utility.search_web_fast(query, num_results=10)
         tag_batches = self.utility.generate_tags_batch(articles=articles)
+        brief_des_batches = self.utility.generate_brief_descriptions_batch(articles=articles)
 
-        url_list = []
+        response_result = list()
 
         # Step 2: Assign tags and store in Redis
-        for article, tags in zip(articles, tag_batches):
+        for article, tags, brief_des in zip(articles, tag_batches, brief_des_batches):
             article_data = {
                 "author": article.get("author", "Unknown"),
                 "title": article.get("title", "No Title"),
@@ -42,67 +35,18 @@ class ScrapeAndTagArticles:
                 "main_text": article.get("main_text"),
                 "tags": tags,  # Assign generated tags
                 "upvotes": article.get("upvotes", 0),
-                "vote_type": article.get("vote_type", NEUTRAL)  # Default to NEUTRAL if not present
+                "vote_type": article.get("vote_type", NEUTRAL),  # Default to NEUTRAL if not present
+                "brief_des_batches": brief_des
             }
 
             # Store in Redis
-            self.redis_client.set(article["url"], json.dumps(article_data), ex=3600)
-
-            url_list.append(article["url"])
+            self.redis_client.set(article["url"], json.dumps(article_data), ex=3600) # Store in 1 hours
+            instance_res = article_data.copy()
+            instance_res.pop("main_text", None)
+            response_result.append(instance_res)
             
-        return url_list      
+        return response_result      
     
-    #move from redis to database
-    def move_to_database(self,url):
-        self.db.connect()
-        # Step 1: Retrieve article from Redis
-        redis_article = self.redis_client.get(url)
-        if redis_article is not None:
-            redis_article = redis_article.decode("utf-8")  # 🔥 Decode bytes to string
-            redis_article = json.loads(redis_article)
-            print(redis_article)
-        else:
-            return "Cannot retrieve None article"
-        # Step 2: Insert Article into SQL Database
-        article_data = {
-            "author": redis_article["author"],
-            "title": redis_article["title"],
-            "url": redis_article["url"],
-            "image_url": redis_article["image_url"],
-            "date_publish": redis_article["date_publish"],
-            "upvotes": redis_article["upvotes"],
-            "vote_type": redis_article["vote_type"]
-        }
-        insert_query = "INSERT INTO article (author, title, url, image_url, date_publish) OUTPUT INSERTED.article_id VALUES (?, ?, ?, ?, ?)"
-        article_id_row = self.db.execute_query(insert_query, params=(article_data["author"], article_data["title"], article_data["url"], article_data["image_url"], article_data["date_publish"]), 
-                                               fetch_one=True, commit=True)
-        
-        if article_id_row:
-            sql_article_id = article_id_row[0]
-            print(f"📰 Moved Article to SQL with new ID {sql_article_id}")
-            
-            # Step 3: Insert Tags (if not exist) + retrieve tag_ids
-            tag_ids = []
-            for tag in redis_article["tags"]:
-                tag_exist_query = "SELECT tag_id FROM tag WHERE tag_name = ?"
-                existing_tag = self.db.execute_query(tag_exist_query, params=(tag), fetch_one=True, commit=True)
-                if existing_tag:
-                    tag_id = existing_tag[0]
-                    print(f"🏷️ Existing Tag ID: {tag_id}")
-                else:
-                    # Insert tag
-                    insert_tag_query = "INSERT INTO tag (tag_name) OUTPUT INSERTED.tag_id VALUES (?)"
-                    tag_id_row = self.db.execute_query(insert_tag_query, params=(tag,), fetch_one=True, commit=True)
-                    tag_id = tag_id_row[0]
-                    print(f"🏷️ Inserted Tag: {tag} with ID {tag_id}")
-                tag_ids.append(tag_id)
-
-            # Step 4: Insert article_tag
-            for tag_id in tag_ids:
-                map_query = "INSERT INTO article_tag (article_id, tag_id) VALUES (?, ?)"
-                self.db.execute_query(map_query, params=(sql_article_id, tag_id), commit=True)
-                print(f"🔗 Mapped Article {sql_article_id} with Tag {tag_id}")
-
     def get_multiple_article(self, urls):
         """
         Retrieves multiple articles from Redis. If an article is not found, it returns None for that URL.
@@ -172,21 +116,4 @@ class ScrapeAndTagArticles:
 
         return redis_article  # ✅ Returns full article data
     
-    def move_query(self, user_id,query):
-        """
-        Move the query to the database.
-
-        Args:
-            query (str): The query to be moved.
-        """
-        # Connect to the database
-        self.db.connect()
-
-        insert_query = "INSERT INTO user_history (user_id,user_history,user_history_time) VALUES (?,?,?)"
-        current_time = time.strftime("%Y-%m-%d %H:%M:%S")
-        self.db.execute_query(insert_query, params=(user_id, query, current_time), commit=True)
-
-# if __name__=="__main__":
-#     processor = ScrapeAndTagArticles()
     
-#     processor.search_and_scrape("Vàng")

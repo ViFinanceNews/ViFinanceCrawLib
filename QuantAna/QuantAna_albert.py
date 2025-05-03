@@ -399,15 +399,14 @@ class QuantAnaInsAlbert:
         try:
             query=self.translation_from_Vie_to_Eng(query)
             prompt = f"""
-            Check the query for obscene content, this includes:
-            - Offensive language
-            - Hate speech
-            - Harassment
-            - Profanity
-            - Threats
-            Return "True" if the query contains obscene content, otherwise return "False"
+            Does the following text contain any of the following: obscene language, hate speech, harassment, profanity, or threats?
+
+            MUST Return only one word: True or False. No explanation.
+
+            Text: \"\"\"{query}\"\"\"
             """
             response = self.translator_model.generate_content(prompt)
+            print(f"Obscence Check Result : {response.text}")
             if not hasattr(response, "text") or not response.text:
                 print("⚠️ Warning: Empty response from AI model.")
                 return False

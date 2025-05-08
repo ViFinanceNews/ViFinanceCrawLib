@@ -348,12 +348,12 @@ class ArticleFactCheckUtility():
         Method 2: Synthesis and Summarization - Generate a clear answer based on reasoning.
 
         This method takes the original user query and the reasoning obtained from
-        reason_about_query(). It uses Gemini to synthesize evidence (implicitly from its knowledge)
+        understanding_the_question(). It uses Gemini to synthesize evidence (implicitly from its knowledge)
         and summarize it into a clear and concise answer, guided by the provided reasoning.
 
         Args:
             query (str): The original user query.\n
-            reasoning (str): The reasoning process obtained from reason_about_query().\n
+            reasoning (str): The reasoning process obtained from understanding_the_question().\n
             evidence (list[str]]): The list of evidence main_text\n
 
         Returns:

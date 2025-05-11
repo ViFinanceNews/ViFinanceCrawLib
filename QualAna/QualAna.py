@@ -1,5 +1,8 @@
 from .ArticleFactCheckUtility import ArticleFactCheckUtility
 from ..article_database.TextCleaning import TextCleaning
+import json
+import re
+
 class QualAnaIns():
 
     def __init__(self):
@@ -21,13 +24,37 @@ class QualAnaIns():
         evidence_string = "\n\n".join(ranked_evidence)
 
         analysis_results = self.utility.analyze_evidence(article, evidence_string)
+        
+        
+        # remove ``json and ``` in the string result of AI answer
+        analysis_results = re.sub(r"^\s*(?:```|''')json\s*", "", analysis_results.strip(), flags=re.IGNORECASE)
+        analysis_results = re.sub(r"(?:```|''')\s*$", "", analysis_results.strip(), flags=re.IGNORECASE)
+        
+        # return to json format
         return analysis_results
 
     def bias_analysis(self, article):
         if not article.strip():  # Check if article is empty or only contains whitespace
             return "⚠️ Bài viết không có nội dung. Vui lòng cung cấp bài viết hợp lệ để phân tích."
         analysis = self.utility.generate_bias_analysis(article)
-        return analysis
+        
+        # remove ``json and ``` in the string result of AI answer
+        
+        parts = analysis.split("```json\n")
+        if len(parts) > 1:
+            json_part = parts[-1].split("\n```")[0]  # Lấy phần cuối cùng và bỏ phần sau ``` 
+            json_string = json_part.strip()  # remove redundant space
+            
+            # remove ``json and ``` in the string result of AI answer
+            json_string = re.sub(r"^\s*(?:```|''')json\s*", "", json_string.strip(), flags=re.IGNORECASE)
+            json_string = re.sub(r"(?:```|''')\s*$", "", json_string.strip(), flags=re.IGNORECASE)
+            print("Chuỗi JSON trích xuất:")
+            print(json_string)
+
+            print("\nKiểm tra độ dài chuỗi JSON:", len(json_string))
+        else:
+            print("Không tìm thấy đoạn JSON trong nội dung.")
+        return json_string
 
     def test(self):
         tc = TextCleaning()

@@ -19,6 +19,8 @@ from ViFinanceCrawLib.article_database.TitleCompleter import TitleCompleter
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 
+import json
+import re
 class ArticleFactCheckUtility():
 
     def __init__(self, model_name='gemini-2.0-flash-thinking-exp-01-21'):
@@ -208,38 +210,36 @@ class ArticleFactCheckUtility():
             Bằng chứng:  
             {evidence}  
 
-            ### **Hãy trả lời theo định dạng sau:**  
-            - **Tổng Hợp Cuối Cùng**: [Tóm tắt thông tin đã kiểm tra để đưa ra kết luận cuối cùng về chủ đề.]  
-            - **Kết luận**: [Hỗ trợ/Mâu thuẫn/Trung lập]  
-            - **Phân tích bằng chứng**: [Các dẫn chứng trên có mối liên hệ như thế nào trong việc đưa ra kết luận về vấn đề người dùng tìm hiểu]
-            - **Mức độ tin cậy**: [Ví dụ: A1, B3, D5] và chú thích của mức độ [ví dụ: A1 - Đáng Tin Cậy và Đã Được Xác Minh]   
-            - **Giải thích**: [Giải thích ngắn gọn về lý do của bạn, có đề cập đến nguồn bằng chứng và mức độ tin cậy của chúng. Nếu có URL trong bằng chứng, hãy chèn nó vào trong lời giải thích dưới dạng liên kết.]  
-            - **Lời khuyên cho người dùng về cách nhìn nhận hiện tại**: [Một lời khuyên ngắn gọn]  
-            - **Danh sách các dẫn chứng**:  
-            + [1]: Tiêu đề - nguồn -  [url] \n
-            + [2]: Tiêu đề - nguồn -  [url] \n
+            ### **Hãy trả lời chú ý các ràng buộc phía duới:**  
+            - Tổng Hợp Cuối Cùng: [Tóm tắt thông tin đã kiểm tra để đưa ra kết luận cuối cùng về chủ đề.]  
+            - Kết luận: [Hỗ trợ/Mâu thuẫn/Trung lập]  
+            - Phân tích bằng chứng: [Các dẫn chứng trên có mối liên hệ như thế nào trong việc đưa ra kết luận về vấn đề người dùng tìm hiểu]
+            - Mức độ tin cậy: [Ví dụ: A1, B3, D5] và chú thích của mức độ [ví dụ: A1 - Đáng Tin Cậy và Đã Được Xác Minh]   
+            - Giải thích: [Giải thích ngắn gọn về lý do của bạn, có đề cập đến nguồn bằng chứng và mức độ tin cậy của chúng. Nếu có URL trong bằng chứng, hãy chèn nó vào trong lời giải thích dưới dạng liên kết.]  
+            - Lời khuyên cho người dùng về cách nhìn nhận hiện tại: [Một lời khuyên ngắn gọn]  
+            - Danh sách các dẫn chứng (mỗi bài báo là một string):  
+                Tiêu đề - nguồn -  [url] \n
+                Tiêu đề - nguồn -  [url] \n
             ....
             ### **Ví dụ cách chèn liên kết:**  
             - "Bằng chứng từ [nguồn này](URL) cho thấy rằng..."  
             - "Theo thông tin từ bài viết này ([link](URL)), ..."  
 
-            **Ví dụ phù hợp của định dạng:**
-            Kết luận: Hỗ trợ  
-            Mức độ tin cậy: A1  
-            Giải thích: Tất cả các nguồn trong phần bằng chứng đều đề cập đến việc giá dầu tăng, hoặc các yếu tố dẫn tới/hệ quả của việc giá dầu tăng trong thời gian gần đây. Các bài viết đều từ nguồn *vneconomy.vn*, một trang tin kinh tế uy tín của Việt Nam.
+            **Ví dụ phù hợp của định dạng "key": "value" của json, nếu có dấu ngoặc kép (") trong nội dung của value hãy đổi thành dấu ngoặc đơn (') để đúng định dạng json, cấm dùng dấu ngoặc kép (") khi viết phần value:**
+            "Tổng Hợp Cuối Cùng": "Các bằng chứng được cung cấp không chứa bất kỳ thông tin nào liên quan đến \"Công ty G\" hay lợi nhuận của công ty này trong năm 2025, cũng như không cung cấp dữ liệu so sánh lợi nhuận của các công ty trong ngành tài chính để xác định công ty có lợi nhuận cao nhất trong năm đó.",
+            "Kết luận": "Trung lập",
+            "Phân tích bằng chứng": "Các bằng chứng được cung cấp bao gồm các bài báo từ VnExpress và VnEconomy, là các nguồn tin tức kinh doanh uy tín. Tuy nhiên, nội dung của chúng không liên quan trực tiếp hoặc gián tiếp đến mệnh đề \"Công ty G có lợi nhuận cao nhất trong ngành tài chính năm 2025\". Bằng chứng [1] thảo luận về kế hoạch và kết quả kinh doanh của HDBank trong năm 2023 và 2024. Bằng chứng [2] đưa ra đánh giá về các kênh đầu tư tiềm năng trong năm 2024. Bằng chứng [3] giải thích về chỉ số PEG để định giá cổ phiếu. Bằng chứng [4] phân tích kỳ vọng của nhà đầu tư nước ngoài về chính sách kinh tế Việt Nam, chủ yếu tập trung vào năm 2023 và bối cảnh vĩ mô. Không có bằng chứng nào đề cập đến \"Công ty G\" hoặc cung cấp dữ liệu lợi nhuận dự kiến hoặc thực tế cho năm 2025 của bất kỳ công ty tài chính nào, đặc biệt là dữ liệu so sánh để xác định công ty dẫn đầu về lợi nhuận.",
+            "Mức độ tin cậy": "B5 - Đáng Tin Cậy (Nguồn) và Không Thể Đánh Giá (Thông tin liên quan đến mệnh đề)",
+            "Giải thích": "Đánh giá mức độ tin cậy là B5. Các nguồn tin VnExpress và VnEconomy là các báo điện tử có uy tín và được công nhận trong lĩnh vực kinh doanh và kinh tế tại Việt Nam (đáng tin cậy - B). Tuy nhiên, nội dung của tất cả các bằng chứng ([1](https://vnexpress.net/hdbank-nang-muc-chia-co-tuc-len-30-4737638.html), [2](https://vnexpress.net/lua-chon-kenh-dau-tu-nao-trong-nam-2024-4699524.html), [3](https://vnexpress.net/chi-so-peg-la-gi-4861277.html), [4](https://vneconomy.vn/nha-dau-tu-nuoc-ngoai-ky-vong-gi-ve-nhung-phan-ung-chinh-sach-cua-viet-nam.htm)) đều không chứa bất kỳ thông tin nào về \"Công ty G\" hoặc dữ liệu lợi nhuận của các công ty trong ngành tài chính dự kiến cho năm 2025. Do đó, dựa trên các bằng chứng này, tính chính xác của mệnh đề \"Công ty G có lợi nhuận cao nhất trong ngành tài chính năm 2025\" hoàn toàn \"không thể đánh giá\" (5).",
+            "Lời khuyên cho người dùng về cách nhìn nhận hiện tại": "Các bằng chứng hiện có không cung cấp thông tin nào để xác minh hoặc bác bỏ mệnh đề về lợi nhuận của \"Công ty G\" trong năm 2025. Để có được thông tin đáng tin cậy về lợi nhuận của các công ty tài chính và xếp hạng của họ trong tương lai, bạn cần tìm kiếm các báo cáo phân tích chuyên sâu từ các công ty chứng khoán uy tín, báo cáo tài chính dự kiến của các công ty, hoặc các nguồn tin tức tài chính chuyên ngành đưa ra dự báo cụ thể cho năm 2025.",
+            "Danh sách các dẫn chứng": [
+                "HDBank nâng mức chia cổ tức lên 30% - Báo VnExpress Kinh doanh - [https://vnexpress.net/hdbank-nang-muc-chia-co-tuc-len-30-4737638.html]",
+                "Lựa chọn kênh đầu tư nào trong năm 2024? - Báo VnExpress Kinh doanh - [https://vnexpress.net/lua-chon-kenh-dau-tu-nao-trong-nam-2024-4699524.html]",
+                "Chỉ số PEG là gì? - Báo VnExpress Kinh doanh - [https://vnexpress.net/chi-so-peg-la-gi-4861277.html]",
+                "Nhà đầu tư nước ngoài kỳ vọng gì về những phản ứng chính sách của Việt Nam? - Nhịp sống kinh tế Việt Nam & Thế giới - [https://vneconomy.vn/nha-dau-tu-nuoc-ngoai-ky-vong-gi-ve-nhung-phan-ung-chinh-sach-cua-viet-nam.htm]"
+            ]
 
-            + Bài viết [Giá dầu đang gây áp lực đến lạm phát](https://vneconomy.vn/gia-dau-dang-gay-ap-luc-den-lam-phat.htm) chỉ ra rằng giá dầu đã tăng mạnh từ giữa tháng 8, với nhiều yếu tố tác động như việc cắt giảm sản lượng của Saudi Arabia và Nga, nhu cầu nhập khẩu cao của Trung Quốc, và triển vọng kinh tế khởi sắc. Bài viết cũng dự báo giá dầu có thể tiếp tục tăng trong quý 4/2023.  
-            + Bài viết [OPEC+ có ảnh hưởng thế nào đến giá dầu và kinh tế toàn cầu?](https://vneconomy.vn/opec-co-anh-huong-the-nao-den-gia-dau-va-kinh-te-toan-cau.htm) giải thích vai trò của OPEC+ trong việc điều tiết nguồn cung và ảnh hưởng đến giá dầu toàn cầu. Việc cắt giảm sản lượng của OPEC+ là một yếu tố quan trọng đẩy giá dầu lên.  
-            + Các bài viết còn lại đề cập các mặt hàng khác cũng tăng theo đà tăng của giá dầu.
-
-            Danh Sách các dẫn chứng:  
-            + [1]: Giá dầu đang gây áp lực đến lạm phát - Nhịp sống kinh tế Việt Nam & Thế giới -  [https://vneconomy.vn/gia-dau-dang-gay-ap-luc-den-lam-phat.htm]  
-            + [2]: OPEC+ có ảnh hưởng thế nào đến giá dầu và kinh tế toàn cầu? - Nhịp sống kinh tế Việt Nam & Thế giới -  [https://vneconomy.vn/opec-co-anh-huong-the-nao-den-gia-dau-va-kinh-te-toan-cau.htm]  
-            + [3]: 10 ảnh hưởng của đồng USD tăng giá mạnh - Nhịp sống kinh tế Việt Nam & Thế giới - [https://vneconomy.vn/10-anh-huong-cua-dong-usd-tang-gia-manh.htm]  
-            + [4]: Lo ngoại tệ “vượt biên” vì vàng - Nhịp sống kinh tế Việt Nam & Thế giới - [https://vneconomy.vn/lo-ngoai-te-vuot-bien-vi-vang.htm]  
-            + [5]: Xu thế dòng tiền: Thêm thông tin hỗ trợ, chứng khoán Việt có đi ngược thế giới? - Nhịp sống kinh tế Việt Nam & Thế giới - [https://vneconomy.vn/xu-the-dong-tien-them-thong-tin-ho-tro-chung-khoan-viet-co-di-nguoc-the-gioi.htm]  
-            + [6]: Carry-trade yên Nhật thoái trào, chứng khoán toàn cầu “chịu trận” - Nhịp sống kinh tế Việt Nam & Thế giới -  [https://vneconomy.vn/carry-trade-yen-nhat-thoai-trao-chung-khoan-toan-cau-chiu-tran.htm]  
-            + [7]: "Cơn sốt" giá cà phê thế giới có thể kéo dài - Nhịp sống kinh tế Việt Nam & Thế giới - [https://vneconomy.vn/con-sot-gia-ca-phe-the-gioi-co-the-keo-dai.htm]
+    
 
             Hãy đảm bảo trả lời giống như ví dụ, nhưng không để nội dung ví dụ ảnh hưởng đến đánh giá.
             
@@ -257,7 +257,7 @@ class ArticleFactCheckUtility():
             print(f"❌ Error in analyze_evidence: {e}")
             return "Đã xảy ra lỗi khi phân tích bằng chứng."
     
-    def generate_bias_analysis(self, article: str):
+    def generate_bias_analysis(self, article : str):
             """
             Generate a qualitative bias and logical fallacy analysis on the article,
             specifying the types of bias and logical fallacies to focus on.
@@ -266,26 +266,37 @@ class ArticleFactCheckUtility():
                 article (str): The article content to analyze.
     
             Returns:
-                str: The formatted prompt for LLM analysis.
+                json: The formatted prompt with "key": "value".
             """
-          
+            # Hãy phân tích bài viết sau theo định dạng json để xác định các thiên kiến và lỗi lập luận có thể có.  
             prompt = f"""
                 Bạn là một nhà báo phân tích phản biện, chuyên đánh giá độ chính xác và khách quan của thông tin.  
                 
-                Hãy phân tích bài viết sau để xác định các thiên kiến và lỗi lập luận có thể có.  
+                
                 - **Không chỉ dựa vào từ khóa**, hãy đánh giá ngữ cảnh và cách lập luận để nhận diện thiên kiến hoặc lỗi logic.  
                 - Nếu bài viết trung lập, hãy kết luận trung lập. Nếu có thiên kiến hoặc lỗi lập luận, hãy đánh giá mức độ ảnh hưởng.  
                 
-                Xuất kết quả theo định dạng sau, chỉ bao gồm nội dung phân tích mà không thêm giải thích hoặc biểu cảm dư thừa:  
+                **Viết Chú ý các ràng buộc phía duới ,chỉ bao gồm nội dung phân tích mà KHÔNG THÊM GIẢI THÍCH:**  
 
-                - **Loại thiên kiến:** [Chính trị, giới tính, văn hóa, thiên kiến xác nhận, v.v.]  
-                - **Mức độ ảnh hưởng:** [Nhẹ, vừa, nghiêm trọng]  
-                - **Phân tích ngắn gọn:** [Giải thích thiên kiến trong tối đa 200 từ, dựa trên ngữ cảnh và lập luận của bài viết]  
+                - Loại thiên kiến: [Chính trị, giới tính, văn hóa, thiên kiến xác nhận, v.v.]  
+                - Mức độ ảnh hưởng: [Nhẹ, vừa, nghiêm trọng]  
+                - Phân tích ngắn gọn: [Giải thích thiên kiến trong tối đa 200 từ, dựa trên ngữ cảnh và lập luận của bài viết]  
 
                 ---  
                 **Câu hỏi phản biện để giúp người đọc có góc nhìn khách quan hơn:**  
                 (Hãy đưa ra 3–5 câu hỏi theo phương pháp Socrates, khuyến khích người đọc suy nghĩ sâu hơn về lập luận trong bài viết)  
-
+            
+                **Trả về định dạng như bên dưới - "key": "value" của json format, nếu có dấu ngoặc kép (") trong nội dung của value hãy đổi thành dấu ngoặc đơn (') để đúng định dạng json, cấm dùng dấu ngoặc kép (") khi viết phần nội dung trong value:**
+                "Loại thiên kiến": "Lỗi lập luận: Mâu thuẫn trực tiếp",
+                "Mức độ ảnh hưởng": "Nghiêm trọng",
+                "Phân tích ngắn gọn": "Câu nói chứa mâu thuẫn logic trực tiếp: \"Công ty E thất bại thảm hại\" và \"vẫn là khoản đầu tư tốt nhất\". Theo định nghĩa thông thường trong tài chính, hai trạng thái này khó có thể tồn tại đồng thời một cách hợp lý. Sự mâu thuẫn này làm suy yếu nghiêm trọng tính hợp lý và đáng tin cậy của nhận định, cho thấy sự thiếu rõ ràng trong tiêu chí đánh giá hoặc lỗi trong lập luận, khiến người đọc khó hiểu và chấp nhận thông tin.",
+                "Câu hỏi phản biện": [
+                    "Những tiêu chí cụ thể nào được sử dụng để xác định đây là \"khoản đầu tư tốt nhất\" trong khi công ty được mô tả là \"thất bại thảm hại\"?",
+                    "Làm thế nào để dung hòa nhận định về sự "thất bại thảm hại" với khẳng định về hiệu quả đầu tư \"tốt nhất\"?",
+                    "Liệu định nghĩa về \"thất bại\" hoặc \"khoản đầu tư tốt nhất\" đang được sử dụng có khác biệt so với thông lệ tài chính không?",
+                    "Có thông tin hoặc bối cảnh nào bị thiếu có thể giúp giải thích sự mâu thuẫn rõ ràng trong nhận định này không?"
+                ]
+                
                 Bài viết cần phân tích:  
                 \"\"\"  
                 {article}  
@@ -311,7 +322,7 @@ class ArticleFactCheckUtility():
         This method sends the user's query to Gemini and asks it to
         explain its reasoning process for understanding the question.
         The reasoning is captured and returned, but not printed to the user directly.
-
+        
         Args:
             query (str): The user's query.
 
@@ -348,12 +359,12 @@ class ArticleFactCheckUtility():
         Method 2: Synthesis and Summarization - Generate a clear answer based on reasoning.
 
         This method takes the original user query and the reasoning obtained from
-        understanding_the_question(). It uses Gemini to synthesize evidence (implicitly from its knowledge)
+        reason_about_query(). It uses Gemini to synthesize evidence (implicitly from its knowledge)
         and summarize it into a clear and concise answer, guided by the provided reasoning.
 
         Args:
             query (str): The original user query.\n
-            reasoning (str): The reasoning process obtained from understanding_the_question().\n
+            reasoning (str): The reasoning process obtained from reason_about_query().\n
             evidence (list[str]]): The list of evidence main_text\n
 
         Returns:

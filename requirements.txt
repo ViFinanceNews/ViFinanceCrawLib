@@ -27,3 +27,4 @@ spacy
 flask-cors
 hvac
 gunicorn
+vncorenlp

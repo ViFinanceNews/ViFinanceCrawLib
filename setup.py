@@ -6,7 +6,6 @@ setup(
     packages=find_packages(),
     install_requires=[
         "google-generativeai",
-        "os",  # Note: 'os' is part of Python's standard library; no need to include it
         "requests",
         "beautifulsoup4",
         "news-please>=1.6.13",
@@ -24,7 +23,8 @@ setup(
         "boto3",
         "sagemaker",
         "json",
-        "underthesea"
+        "vncorenlp",
+        "python-dotenv"
     ],
     description="A Vietnamese Financial Crawling and Analysis Library",
     python_requires='>=3.7',

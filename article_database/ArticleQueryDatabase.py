@@ -18,8 +18,14 @@ class AQD:
             password=os.getenv("REDIS_PASSWORD"),
             ssl=True
         )
-    
-    def move_to_database(self, url):
+        self.redis_usr = redis.Redis(
+            host=os.getenv("REDIS_HOST_USR_DATA"),
+            port=os.getenv("REDIS_PORT"),
+            password=os.getenv("REDIS_PASSWORD_USR_DATA"),
+            ssl=True
+        )
+   
+    def move_article_to_database(self, url):
         try:
             self.db.connect()
             print(f"📥 Attempting to move article from Redis to DB for URL: {url}")
@@ -106,7 +112,35 @@ class AQD:
             print(f"🚨 Critical error during move_to_database: {e}")
             return "Unexpected failure"
         
-    def move_query(self, user_id, query):
+    def get_userID_from_session(self, SESSION_ID: str):
+        # Construct the Redis key to fetch the session data
+        redis_key = f"session:{SESSION_ID}"
+        
+        # Get the session data from Redis (assuming redis_usr is a Redis client)
+        session_data = self.redis_usr.get(redis_key)
+        
+        if session_data is None:
+            print("Session not found or expired.")
+            return None
+
+        # Try to decode session data if it's stored as JSON
+        try:
+            # Attempt to decode the session data from a JSON string
+            session_data_dict = json.loads(session_data)
+            
+            # Access the 'userId' from the decoded dictionary
+            user_id = session_data_dict.get('userId')
+            if user_id:
+                return user_id
+            else:
+                print("User ID not found in session data.")
+                return None
+        except json.JSONDecodeError:
+            # If the data is not JSON, return it directly
+            print("Session data is not in JSON format, returning raw data.")
+            return session_data.decode()  # Decode to a string if not JSON
+
+    def move_query_to_history(self, user_id, query):
         """
         Move the user's search query to the user_history table in the database.
 
@@ -129,3 +163,13 @@ class AQD:
 
         except Exception as e:
             print(f"❌ Failed to log query: {e}")
+
+
+
+# DEMO ! 
+aqd = AQD()
+# Auth -> Sesssion_Id -> 
+session_id = "322ff072-795f-432c-a78b-4eb986f7a416" # Client-ID (assumption get success from client) - JUST EXAMPLE
+user_id = aqd.get_userID_from_session(session_id)
+
+print("Session data:", user_id)

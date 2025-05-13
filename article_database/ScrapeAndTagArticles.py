@@ -25,6 +25,12 @@ class ScrapeAndTagArticles:
 
         response_result = list()
 
+        try: # Check if upvote being initialize & using correctly
+            upvotes = int(article.get("upvotes")) # this would count as the updated from multiple user
+        except (TypeError, ValueError):
+            print("⚠️ Invalid upvotes value:", article.get("upvotes"))
+            upvotes = 0
+
         # Step 2: Assign tags and store in Redis
         for article, tags, brief_des in zip(articles, tag_batches, brief_des_batches):
             article_data = {
@@ -35,85 +41,22 @@ class ScrapeAndTagArticles:
                 "date_publish": article.get("date_publish"),
                 "main_text": article.get("main_text"),
                 "tags": tags,  # Assign generated tags
-                "upvotes": article.get("upvotes", 0),
+                "upvotes": upvotes, # Alays assign zeros for the newly scraped articles
                 "vote_type": article.get("vote_type", NEUTRAL),  # Default to NEUTRAL if not present
                 "brief_des_batches": brief_des
             }
 
             # Store in Redis
-            self.redis_client.set(article["url"], json.dumps(article_data), ex=3600) # Store in 1 hours
+            try:
+                self.redis_client.set(article["url"], json.dumps(article_data), ex=3600) # Store in 1 hours
+            except Exception as re:
+                print(f"⚠️ Redis error for article {article["url"]}: {re}")
             instance_res = article_data.copy()
             instance_res.pop("main_text", None)
             response_result.append(instance_res)
             
         return response_result      
     
-    #DEPRECATED: move from redis to database
-    def move_to_database(self,url,user_id):
-        """
-        🚨 DEPRECATED: This method is scheduled to be removed in future versions.
-        using the ArticleQueryDatabase.py to handle this
-        Moves article from Redis to SQL database.
-        """
-        warnings.warn(
-            "move_to_database() is deprecated and will be removed in a future release - using the ArticleQueryDatabase.py to handle this",
-            DeprecationWarning,
-            stacklevel=2
-        )
-        self.db.connect()
-        # Step 1: Retrieve article from Redis
-        redis_article = self.redis_client.get(url)
-        if redis_article is not None:
-            redis_article = redis_article.decode("utf-8")  # 🔥 Decode bytes to string
-            redis_article = json.loads(redis_article)
-            print(redis_article)
-        else:
-            return "Cannot retrieve None article"
-        # Step 2: Insert Article into SQL Database
-        article_data = {
-            "author": redis_article["author"],
-            "title": redis_article["title"],
-            "url": redis_article["url"],
-            "image_url": redis_article["image_url"],
-            "date_publish": redis_article["date_publish"],
-            "upvotes": redis_article["upvotes"],
-            "vote_type": redis_article["vote_type"]
-        }
-        insert_query = "INSERT INTO article (author, title, url, image_url, date_publish) OUTPUT INSERTED.article_id VALUES (?, ?, ?, ?, ?, ?)"
-        article_id_row = self.db.execute_query(insert_query, params=(article_data["author"], article_data["title"], article_data["url"], article_data["image_url"], article_data["date_publish"],article_data["upvotes"]), 
-                                               fetch_one=True, commit=True)
-        
-        if article_id_row:
-            sql_article_id = article_id_row[0]
-            print(f"📰 Moved Article to SQL with new ID {sql_article_id}")
-            
-            # Step 3: Insert Tags (if not exist) + retrieve tag_ids
-            tag_ids = []
-            for tag in redis_article["tags"]:
-                tag_exist_query = "SELECT tag_id FROM tag WHERE tag_name = ?"
-                existing_tag = self.db.execute_query(tag_exist_query, params=(tag), fetch_one=True, commit=True)
-                if existing_tag:
-                    tag_id = existing_tag[0]
-                    print(f"🏷️ Existing Tag ID: {tag_id}")
-                else:
-                    # Insert tag
-                    insert_tag_query = "INSERT INTO tag (tag_name) OUTPUT INSERTED.tag_id VALUES (?)"
-                    tag_id_row = self.db.execute_query(insert_tag_query, params=(tag,), fetch_one=True, commit=True)
-                    tag_id = tag_id_row[0]
-                    print(f"🏷️ Inserted Tag: {tag} with ID {tag_id}")
-                tag_ids.append(tag_id)
-
-            # Step 4: Insert article_tag
-            for tag_id in tag_ids:
-                map_query = "INSERT INTO article_tag (article_id, tag_id) VALUES (?, ?)"
-                self.db.execute_query(map_query, params=(sql_article_id, tag_id), commit=True)
-                print(f"🔗 Mapped Article {sql_article_id} with Tag {tag_id}")
-
-            # Step 5: Insert upvotes in the account_article table in the article_id row
-            insert_upvote_query = "INSERT INTO account_article (account_id, article_id, upvotes) VALUES (?, ?, ?)"
-            self.db.execute_query(insert_upvote_query, params=(user_id, sql_article_id, redis_article["vote_type"]), commit=True)
-
-
     def get_multiple_article(self, urls):
         """
         Retrieves multiple articles from Redis. If an article is not found, it returns None for that URL.

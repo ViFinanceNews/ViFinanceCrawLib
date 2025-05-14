@@ -26,8 +26,47 @@ class AQD:
             ssl=True
         )
         
-    
-    
+    def get_userID_from_session(self, SESSION_ID: str):
+        """
+            Retrieves the user ID associated with a given session ID from Redis.
+
+            This method checks Redis for session data using a constructed session key.
+            If the session data exists, it attempts to parse it as JSON and extract the 'userId'.
+            If the session data is not in JSON format, it returns the raw decoded data instead.
+
+            Args:
+                SESSION_ID (str): The session ID used to look up the user.
+
+            Returns:
+                str or None: The user ID if found; otherwise, None.
+                If the session is not in JSON format, returns the raw decoded string.
+        """
+        # Construct the Redis key to fetch the session data
+        redis_key = f"session:{SESSION_ID}"
+        
+        # Get the session data from Redis (assuming redis_usr is a Redis client)
+        session_data = self.redis_usr.get(redis_key)
+        
+        if session_data is None:
+            print("Session not found or expired.")
+            return None
+
+        # Try to decode session data if it's stored as JSON
+        try:
+            # Attempt to decode the session data from a JSON string
+            session_data_dict = json.loads(session_data)
+            
+            # Access the 'userId' from the decoded dictionary
+            user_id = session_data_dict.get('userId')
+            if user_id:
+                return user_id
+            else:
+                print("User ID not found in session data.")
+                return None
+        except json.JSONDecodeError:
+            # If the data is not JSON, return it directly
+            print("Session data is not in JSON format, returning raw data.")
+            return session_data.decode()  # Decode to a string if not JSON
 
     def _get_article_from_redis(self, url):
         """

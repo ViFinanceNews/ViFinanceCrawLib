@@ -118,7 +118,17 @@ class Database:
             print(f"❌ Bulk insert failed: {e}")
 
     def execute_query(self, query, params=None, fetch_one=False, fetch_all=False, commit=False):
-        """Executes a raw SQL query with optional fetch and commit options."""
+        """
+             Executes a raw SQL query with optional fetch and commit options.
+             Parameters:
+             - query (str): The SQL query string to be executed.
+             - params (tuple or list, optional): Parameters to be passed with the SQL query.
+             - fetch_one (bool): If True, fetches a single row from the result.
+             - fetch_all (bool): If True, fetches all rows from the result.
+             - commit (bool): If True, commits the transaction after executing the query.
+             Returns:
+             - The result of the query if fetch_one or fetch_all is True, otherwise None.
+         """
         if not self.conn:
             print("⚠️ No database connection.")
             return None

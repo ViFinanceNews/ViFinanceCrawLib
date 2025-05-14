@@ -201,20 +201,20 @@ class AQD:
         Returns:
             str | None: The user ID if found, otherwise None.
         """
-        redis_key = f"session:{SESSION_ID}"
-        session_data = self.redis_usr.get(redis_key)
+        session_key = f"session:{SESSION_ID}"
+        session_data = self.redis_usr.get(session_key)
         
         if session_data is None:
             print("Session not found or expired.")
             return None
 
         try:
-            session_data_dict = json.loads(session_data)
+            session_data_dict = json.loads(session_data.decode("utf-8"))
             user_id = session_data_dict.get('userId')
             if user_id:
                 return user_id
             else:
-                print("User ID not found in session data.")
+                print("Unauthorized – No userId in session")
                 return None
         except json.JSONDecodeError:
             print("Session data is not in JSON format, returning raw data.")

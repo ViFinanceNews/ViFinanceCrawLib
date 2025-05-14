@@ -164,12 +164,3 @@ class AQD:
         except Exception as e:
             print(f"❌ Failed to log query: {e}")
 
-
-
-# DEMO ! 
-aqd = AQD()
-# Auth -> Sesssion_Id -> 
-session_id = "322ff072-795f-432c-a78b-4eb986f7a416" # Client-ID (assumption get success from client) - JUST EXAMPLE
-user_id = aqd.get_userID_from_session(session_id)
-
-print("Session data:", user_id)

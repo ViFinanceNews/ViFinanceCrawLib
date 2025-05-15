@@ -11,8 +11,3 @@ class TextCleaning():
         text = re.sub(r'\s+', ' ', text).strip()  # Remove extra spaces
         return text
     
-if __name__ == "__main__":
-    tc = TextCleaning()
-    test_str = "   Hello, world!!!    This   is a   test...   "
-    clean_text = tc.clean_text(test_str, punctuation=False)
-    print(clean_text)

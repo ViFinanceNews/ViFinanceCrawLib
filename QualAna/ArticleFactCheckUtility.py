@@ -215,29 +215,49 @@ class ArticleFactCheckUtility():
             - Kết luận: [Hỗ trợ/Mâu thuẫn/Trung lập]  
             - Phân tích bằng chứng: [Các dẫn chứng trên có mối liên hệ như thế nào trong việc đưa ra kết luận về vấn đề người dùng tìm hiểu]
             - Mức độ tin cậy: [Ví dụ: A1, B3, D5] và chú thích của mức độ [ví dụ: A1 - Đáng Tin Cậy và Đã Được Xác Minh]   
-            - Giải thích: [Giải thích ngắn gọn về lý do của bạn, có đề cập đến nguồn bằng chứng và mức độ tin cậy của chúng. Nếu có URL trong bằng chứng, hãy chèn nó vào trong lời giải thích dưới dạng liên kết.]  
+            - Giải thích: [Giải thích ngắn gọn về lý do của bạn, có đề cập đến nguồn bằng chứng và mức độ tin cậy của chúng.]  
             - Lời khuyên cho người dùng về cách nhìn nhận hiện tại: [Một lời khuyên ngắn gọn]  
             - Danh sách các dẫn chứng (mỗi bài báo là một string):  
-                Tiêu đề - nguồn -  [url] \n
-                Tiêu đề - nguồn -  [url] \n
+                [Số thứ tự bài báo ]: Tiêu đề - nguồn -  [url] \n
+                [Số thứ tự bài báo ]: Tiêu đề - nguồn -  [url] \n
             ....
             ### **Ví dụ cách chèn liên kết:**  
-            - "Bằng chứng từ [nguồn này](URL) cho thấy rằng..."  
-            - "Theo thông tin từ bài viết này ([link](URL)), ..."  
+            - "Bằng chứng từ [Số thứ tự bài báo] cho thấy rằng..."  
+            - "Theo thông tin từ bài viết này [Số thứ tự bài báo], ..."  
 
             **Ví dụ phù hợp của định dạng "key": "value" của json, nếu có dấu ngoặc kép (") trong nội dung của value hãy đổi thành dấu ngoặc đơn (') để đúng định dạng json, cấm dùng dấu ngoặc kép (") khi viết phần value:**
             "Tổng Hợp Cuối Cùng": "Các bằng chứng được cung cấp không chứa bất kỳ thông tin nào liên quan đến \"Công ty G\" hay lợi nhuận của công ty này trong năm 2025, cũng như không cung cấp dữ liệu so sánh lợi nhuận của các công ty trong ngành tài chính để xác định công ty có lợi nhuận cao nhất trong năm đó.",
             "Kết luận": "Trung lập",
             "Phân tích bằng chứng": "Các bằng chứng được cung cấp bao gồm các bài báo từ VnExpress và VnEconomy, là các nguồn tin tức kinh doanh uy tín. Tuy nhiên, nội dung của chúng không liên quan trực tiếp hoặc gián tiếp đến mệnh đề \"Công ty G có lợi nhuận cao nhất trong ngành tài chính năm 2025\". Bằng chứng [1] thảo luận về kế hoạch và kết quả kinh doanh của HDBank trong năm 2023 và 2024. Bằng chứng [2] đưa ra đánh giá về các kênh đầu tư tiềm năng trong năm 2024. Bằng chứng [3] giải thích về chỉ số PEG để định giá cổ phiếu. Bằng chứng [4] phân tích kỳ vọng của nhà đầu tư nước ngoài về chính sách kinh tế Việt Nam, chủ yếu tập trung vào năm 2023 và bối cảnh vĩ mô. Không có bằng chứng nào đề cập đến \"Công ty G\" hoặc cung cấp dữ liệu lợi nhuận dự kiến hoặc thực tế cho năm 2025 của bất kỳ công ty tài chính nào, đặc biệt là dữ liệu so sánh để xác định công ty dẫn đầu về lợi nhuận.",
             "Mức độ tin cậy": "B5 - Đáng Tin Cậy (Nguồn) và Không Thể Đánh Giá (Thông tin liên quan đến mệnh đề)",
-            "Giải thích": "Đánh giá mức độ tin cậy là B5. Các nguồn tin VnExpress và VnEconomy là các báo điện tử có uy tín và được công nhận trong lĩnh vực kinh doanh và kinh tế tại Việt Nam (đáng tin cậy - B). Tuy nhiên, nội dung của tất cả các bằng chứng ([1](https://vnexpress.net/hdbank-nang-muc-chia-co-tuc-len-30-4737638.html), [2](https://vnexpress.net/lua-chon-kenh-dau-tu-nao-trong-nam-2024-4699524.html), [3](https://vnexpress.net/chi-so-peg-la-gi-4861277.html), [4](https://vneconomy.vn/nha-dau-tu-nuoc-ngoai-ky-vong-gi-ve-nhung-phan-ung-chinh-sach-cua-viet-nam.htm)) đều không chứa bất kỳ thông tin nào về \"Công ty G\" hoặc dữ liệu lợi nhuận của các công ty trong ngành tài chính dự kiến cho năm 2025. Do đó, dựa trên các bằng chứng này, tính chính xác của mệnh đề \"Công ty G có lợi nhuận cao nhất trong ngành tài chính năm 2025\" hoàn toàn \"không thể đánh giá\" (5).",
+            "Giải thích": "Đánh giá mức độ tin cậy là B5. Các nguồn tin VnExpress và VnEconomy là các báo điện tử có uy tín và được công nhận trong lĩnh vực kinh doanh và kinh tế tại Việt Nam (đáng tin cậy - B). Tuy nhiên, nội dung của tất cả các bằng chứng [1], [2], [3], [4] đều không chứa bất kỳ thông tin nào về \"Công ty G\" hoặc dữ liệu lợi nhuận của các công ty trong ngành tài chính dự kiến cho năm 2025. Do đó, dựa trên các bằng chứng này, tính chính xác của mệnh đề \"Công ty G có lợi nhuận cao nhất trong ngành tài chính năm 2025\" hoàn toàn \"không thể đánh giá\".",
             "Lời khuyên cho người dùng về cách nhìn nhận hiện tại": "Các bằng chứng hiện có không cung cấp thông tin nào để xác minh hoặc bác bỏ mệnh đề về lợi nhuận của \"Công ty G\" trong năm 2025. Để có được thông tin đáng tin cậy về lợi nhuận của các công ty tài chính và xếp hạng của họ trong tương lai, bạn cần tìm kiếm các báo cáo phân tích chuyên sâu từ các công ty chứng khoán uy tín, báo cáo tài chính dự kiến của các công ty, hoặc các nguồn tin tức tài chính chuyên ngành đưa ra dự báo cụ thể cho năm 2025.",
-            "Danh sách các dẫn chứng": [
-                "HDBank nâng mức chia cổ tức lên 30% - Báo VnExpress Kinh doanh - [https://vnexpress.net/hdbank-nang-muc-chia-co-tuc-len-30-4737638.html]",
-                "Lựa chọn kênh đầu tư nào trong năm 2024? - Báo VnExpress Kinh doanh - [https://vnexpress.net/lua-chon-kenh-dau-tu-nao-trong-nam-2024-4699524.html]",
-                "Chỉ số PEG là gì? - Báo VnExpress Kinh doanh - [https://vnexpress.net/chi-so-peg-la-gi-4861277.html]",
-                "Nhà đầu tư nước ngoài kỳ vọng gì về những phản ứng chính sách của Việt Nam? - Nhịp sống kinh tế Việt Nam & Thế giới - [https://vneconomy.vn/nha-dau-tu-nuoc-ngoai-ky-vong-gi-ve-nhung-phan-ung-chinh-sach-cua-viet-nam.htm]"
-            ]
+            "Danh sách các dẫn chứng": 
+                "[1]":    
+                        
+                            "title": "HDBank nâng mức chia cổ tức lên 30%", 
+                            "publisher": "Báo VnExpress Kinh doanh", 
+                            "url": "https://vnexpress.net/hdbank-nang-muc-chia-co-tuc-len-30-4737638.html"
+                        ,
+                "[2]":    
+                        
+                            "title": "Lựa chọn kênh đầu tư nào trong năm 2024", 
+                            "publisher": "Báo VnExpress Kinh doanh", 
+                            "url": "https://vnexpress.net/lua-chon-kenh-dau-tu-nao-trong-nam-2024-4699524.html"
+                        ,   
+                "[3]":    
+                        
+                            "title": "Chỉ số PEG là gì?", 
+                            "publisher": "Báo VnExpress Kinh doanh", 
+                            "url": "https://vnexpress.net/chi-so-peg-la-gi-4861277.html"
+                        ,
+                "[4]":    
+                        
+                            "title": "Nhà đầu tư nước ngoài kỳ vọng gì về những phản ứng chính sách của Việt Nam?", 
+                            "publisher": "Nhịp sống kinh tế Việt Nam & Thế giới", 
+                            "url": "https://vneconomy.vn/nha-dau-tu-nuoc-ngoai-ky-vong-gi-ve-nhung-phan-ung-chinh-sach-cua-viet-nam.htm"
+                        
+            
 
     
 

@@ -42,7 +42,7 @@ class ScrapeAndTagArticles:
                 "main_text": article.get("main_text"),
                 "tags": tags,  # Assign generated tags
                 "upvotes": upvotes, # Alays assign zeros for the newly scraped articles
-                "vote_type": article.get("vote_type", NEUTRAL),  # Default to NEUTRAL if not present
+                #"vote_type": article.get("vote_type", NEUTRAL),  # Default to NEUTRAL if not present
                 "brief_des_batches": brief_des
             }
 
@@ -115,7 +115,7 @@ class ScrapeAndTagArticles:
                 "date_publish": scraped_article[0].get("date_publish"),
                 "main_text": scraped_article[0].get("main_text"),
                 "upvotes": scraped_article[0].get("upvotes", 0),
-                "vote_type": NEUTRAL
+                # "vote_type": NEUTRAL
             }
             
 

@@ -24,38 +24,53 @@ class ScrapeAndTagArticles:
         brief_des_batches = self.utility.generate_brief_descriptions_batch(articles=articles)
 
         response_result = list()
-
-        try: # Check if upvote being initialize & using correctly
-            upvotes = int(article.get("upvotes")) # this would count as the updated from multiple user
-        except (TypeError, ValueError):
-            print("⚠️ Invalid upvotes value:", article.get("upvotes"))
-            upvotes = 0
+        
 
         # Step 2: Assign tags and store in Redis
         for article, tags, brief_des in zip(articles, tag_batches, brief_des_batches):
-            article_data = {
-                "author": article.get("author", "Unknown"),
-                "title": article.get("title", "No Title"),
-                "url": article.get("url"),
-                "image_url": article.get("image_url"),
-                "date_publish": article.get("date_publish"),
-                "main_text": article.get("main_text"),
-                "tags": tags,  # Assign generated tags
-                "upvotes": upvotes, # Alays assign zeros for the newly scraped articles
-                #"vote_type": article.get("vote_type", NEUTRAL),  # Default to NEUTRAL if not present
-                "brief_des_batches": brief_des
-            }
-
-            # Store in Redis
             try:
-                self.redis_client.set(article["url"], json.dumps(article_data), ex=3600) # Store in 1 hours
-            except Exception as re:
-                print(f"⚠️ Redis error for article {article["url"]}: {re}")
-            instance_res = article_data.copy()
-            instance_res.pop("main_text", None)
-            response_result.append(instance_res)
-            
-        return response_result      
+                url = article.get("url")
+                if not url:
+                    print("⚠️ Skipping article with missing URL:", article)
+                    continue
+
+                # Handle upvotes conversion safely
+                try:
+                    upvotes = int(article.get("upvotes"))
+                except (TypeError, ValueError):
+                    print("⚠️ Invalid upvotes value:", article.get("upvotes"))
+                    upvotes = 0
+
+                article_data = {
+                    "author": article.get("author", "Unknown"),
+                    "title": article.get("title", "No Title"),
+                    "url": url,
+                    "image_url": article.get("image_url"),
+                    "date_publish": article.get("date_publish"),
+                    "main_text": article.get("main_text"),
+                    "tags": tags,
+                    "upvotes": upvotes,
+                    "brief_des_batches": brief_des
+                }
+
+                try:
+                    self.redis_client.set(url, json.dumps(article_data), ex=3600)
+                except Exception as re:
+                    print(f"⚠️ Redis error for article {url}: {re}")
+
+                try:
+                    instance_res = article_data.copy()
+                    instance_res.pop("main_text", None)
+                    response_result.append(instance_res)
+                except Exception as ap:
+                    print(f"⚠️ Append result failed for article {url}: {ap}")
+
+            except Exception as e:
+                print(f"❌ Failed to process article: {article.get('title', 'Unknown')} — Error: {e}")
+                continue
+
+
+        return response_result
     
     def get_multiple_article(self, urls):
         """

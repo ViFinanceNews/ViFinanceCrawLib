@@ -61,7 +61,7 @@ class AQD:
 
             tag_ids = self._process_tags(redis_article.get("tags", []))
             self._link_article_tags(article_id, tag_ids)
-            vote_type = self.get_usr_vote_type(user_id)
+            vote_type = self.get_user_vote_for_url(user_id, url)
             self._link_user_article(user_id, article_id, vote_type)
 
             print("✅ Article moved to database successfully.")
@@ -245,30 +245,26 @@ class AQD:
         except Exception as e:
             print(f"❌ Failed to log query: {e}")
     
-    def get_usr_vote_type(self, user_id):
+    def get_user_vote_for_url(self, user_id: str, url: str) -> int:
         """
-        Retrieve all vote types for a given user from Redis.
+        Get the vote type (-1, 0, 1) a user has given to a specific article by URL.
 
         Args:
             user_id (str): The ID of the user.
+            url (str): The article URL.
 
         Returns:
-            dict: A dictionary where keys are article URLs and values are vote types (-1, 0, 1).
+            int: Vote type (-1 = downvote, 0 = neutral/no vote, 1 = upvote).
         """
         try:
-            # Construct the key for the user's personal votes
             user_votes_key = f"user:{user_id}:personal_vote"
+            vote_raw = self.redis_usr.hget(user_votes_key, url)
 
-            # Get all votes stored in the user's hash
-            vote_data = self.redis_usr.hgetall(user_votes_key)
+            if vote_raw is None:
+                return 0  # Default to NEUTRAL_VOTE if not found
 
-            # Decode and convert vote types to integers
-            decoded_votes = {
-                key.decode("utf-8"): int(value.decode("utf-8"))
-                for key, value in vote_data.items()
-            }
+            return int(vote_raw.decode("utf-8"))
 
-            return decoded_votes
         except Exception as e:
-            print(f"❌ Failed to retrieve vote types for user {user_id}: {e}")
-            return {}
+            print(f"❌ Error retrieving vote for user {user_id}, url {url}: {e}")
+            return 0  # Fallback to neutral on error

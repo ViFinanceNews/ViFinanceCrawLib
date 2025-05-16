@@ -233,10 +233,10 @@ class AQD:
             self.db.connect()
             current_time = time.strftime("%Y-%m-%d %H:%M:%S")
 
-            # PostgreSQL uses $1, $2, $3 for placeholders
+            # PostgreSQL uses %s, %s, %s for placeholders
             insert_query = """
                 INSERT INTO user_history (user_id, user_history, user_history_time)
-                VALUES ($1, $2, $3)
+                VALUES (%s, %s, %s)
             """
 
             self.db.execute_query(insert_query, params=(user_id, query, current_time), commit=True)

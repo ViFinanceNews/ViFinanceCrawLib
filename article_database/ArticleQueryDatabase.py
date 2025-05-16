@@ -61,7 +61,8 @@ class AQD:
 
             tag_ids = self._process_tags(redis_article.get("tags", []))
             self._link_article_tags(article_id, tag_ids)
-            self._link_user_article(user_id, article_id, redis_article.get("vote_type"))
+            vote_type = self.get_usr_vote_type(user_id)
+            self._link_user_article(user_id, article_id, vote_type)
 
             print("✅ Article moved to database successfully.")
             return "Success"
@@ -243,3 +244,31 @@ class AQD:
 
         except Exception as e:
             print(f"❌ Failed to log query: {e}")
+    
+    def get_usr_vote_type(self, user_id):
+        """
+        Retrieve all vote types for a given user from Redis.
+
+        Args:
+            user_id (str): The ID of the user.
+
+        Returns:
+            dict: A dictionary where keys are article URLs and values are vote types (-1, 0, 1).
+        """
+        try:
+            # Construct the key for the user's personal votes
+            user_votes_key = f"user:{user_id}:personal_vote"
+
+            # Get all votes stored in the user's hash
+            vote_data = self.redis_usr.hgetall(user_votes_key)
+
+            # Decode and convert vote types to integers
+            decoded_votes = {
+                key.decode("utf-8"): int(value.decode("utf-8"))
+                for key, value in vote_data.items()
+            }
+
+            return decoded_votes
+        except Exception as e:
+            print(f"❌ Failed to retrieve vote types for user {user_id}: {e}")
+            return {}

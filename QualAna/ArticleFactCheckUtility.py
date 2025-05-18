@@ -232,31 +232,31 @@ class ArticleFactCheckUtility():
             "Mức độ tin cậy": "B5 - Đáng Tin Cậy (Nguồn) và Không Thể Đánh Giá (Thông tin liên quan đến mệnh đề)",
             "Giải thích": "Đánh giá mức độ tin cậy là B5. Các nguồn tin VnExpress và VnEconomy là các báo điện tử có uy tín và được công nhận trong lĩnh vực kinh doanh và kinh tế tại Việt Nam (đáng tin cậy - B). Tuy nhiên, nội dung của tất cả các bằng chứng [1], [2], [3], [4] đều không chứa bất kỳ thông tin nào về \"Công ty G\" hoặc dữ liệu lợi nhuận của các công ty trong ngành tài chính dự kiến cho năm 2025. Do đó, dựa trên các bằng chứng này, tính chính xác của mệnh đề \"Công ty G có lợi nhuận cao nhất trong ngành tài chính năm 2025\" hoàn toàn \"không thể đánh giá\".",
             "Lời khuyên cho người dùng về cách nhìn nhận hiện tại": "Các bằng chứng hiện có không cung cấp thông tin nào để xác minh hoặc bác bỏ mệnh đề về lợi nhuận của \"Công ty G\" trong năm 2025. Để có được thông tin đáng tin cậy về lợi nhuận của các công ty tài chính và xếp hạng của họ trong tương lai, bạn cần tìm kiếm các báo cáo phân tích chuyên sâu từ các công ty chứng khoán uy tín, báo cáo tài chính dự kiến của các công ty, hoặc các nguồn tin tức tài chính chuyên ngành đưa ra dự báo cụ thể cho năm 2025.",
-            "Danh sách các dẫn chứng": 
+            "Danh sách các dẫn chứng": **ngoặc nhọn ở đây**
                 "[1]":    
-                        
+                        **ngoặc nhọn ở đây**
                             "title": "HDBank nâng mức chia cổ tức lên 30%", 
                             "publisher": "Báo VnExpress Kinh doanh", 
-                            "url": "https://vnexpress.net/hdbank-nang-muc-chia-co-tuc-len-30-4737638.html"
+                            "url": "https://vnexpress.net/hdbank-nang-muc-chia-co-tuc-len-30-4737638.html" **ngoặc nhọn ở đây**
                         ,
-                "[2]":    
+                "[2]":    **ngoặc nhọn ở đây**
                         
                             "title": "Lựa chọn kênh đầu tư nào trong năm 2024", 
                             "publisher": "Báo VnExpress Kinh doanh", 
-                            "url": "https://vnexpress.net/lua-chon-kenh-dau-tu-nao-trong-nam-2024-4699524.html"
+                            "url": "https://vnexpress.net/lua-chon-kenh-dau-tu-nao-trong-nam-2024-4699524.html"**ngoặc nhọn ở đây**
                         ,   
-                "[3]":    
+                "[3]":    **ngoặc nhọn ở đây**
                         
                             "title": "Chỉ số PEG là gì?", 
                             "publisher": "Báo VnExpress Kinh doanh", 
-                            "url": "https://vnexpress.net/chi-so-peg-la-gi-4861277.html"
+                            "url": "https://vnexpress.net/chi-so-peg-la-gi-4861277.html"**ngoặc nhọn ở đây**
                         ,
-                "[4]":    
+                "[4]":    **ngoặc nhọn ở đây**
                         
                             "title": "Nhà đầu tư nước ngoài kỳ vọng gì về những phản ứng chính sách của Việt Nam?", 
                             "publisher": "Nhịp sống kinh tế Việt Nam & Thế giới", 
-                            "url": "https://vneconomy.vn/nha-dau-tu-nuoc-ngoai-ky-vong-gi-ve-nhung-phan-ung-chinh-sach-cua-viet-nam.htm"
-                        
+                            "url": "https://vneconomy.vn/nha-dau-tu-nuoc-ngoai-ky-vong-gi-ve-nhung-phan-ung-chinh-sach-cua-viet-nam.htm" **ngoặc nhọn ở đây**
+            **ngoặc nhọn ở đây**            
             
 
     
@@ -264,7 +264,6 @@ class ArticleFactCheckUtility():
             Hãy đảm bảo trả lời giống như ví dụ, nhưng không để nội dung ví dụ ảnh hưởng đến đánh giá.
             
             """
-
         try:
             response = self.model.generate_content(prompt)
             if not hasattr(response, "text") or not response.text:

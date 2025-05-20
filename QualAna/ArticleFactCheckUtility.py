@@ -23,7 +23,7 @@ import json
 import re
 class ArticleFactCheckUtility():
 
-    def __init__(self, model_name='gemini-2.0-flash-thinking-exp-01-21'):
+    def __init__(self, model_name='gemini-2.0-flash-lite'):
         load_dotenv()
         genai.configure(api_key=os.getenv("API_KEY"))
         self.model_name = model_name
@@ -642,63 +642,4 @@ class ArticleFactCheckUtility():
         
         return batch_size
     
-    def main(self):
-
-        articles = [
-        """
-        **Bài viết 1: Tình hình kinh tế Việt Nam năm 2024**
-
-        Năm 2024, kinh tế Việt Nam tiếp tục phát triển mạnh mẽ với GDP tăng trưởng 6,5%. Các ngành công nghiệp chủ chốt như sản xuất, dịch vụ và nông nghiệp đều ghi nhận sự tăng trưởng đáng kể. Đặc biệt, ngành công nghệ thông tin và truyền thông đã đóng góp lớn vào nền kinh tế, với nhiều startup công nghệ đạt được thành công trên thị trường quốc tế. Tuy nhiên, Việt Nam cũng đối mặt với thách thức về biến đổi khí hậu và cần có chiến lược phát triển bền vững để duy trì đà tăng trưởng.
-        """,
-        """
-        **Bài viết 2: Sự phát triển của giáo dục trực tuyến tại Việt Nam**
-
-        Trong những năm gần đây, giáo dục trực tuyến đã trở thành xu hướng tại Việt Nam. Với sự phát triển của công nghệ và internet, nhiều khóa học trực tuyến chất lượng cao đã được triển khai, giúp người học tiếp cận kiến thức một cách linh hoạt và tiết kiệm chi phí. Các nền tảng như Edtech Vietnam, Topica đã thu hút hàng triệu người dùng. Tuy nhiên, việc đảm bảo chất lượng và kiểm định các khóa học trực tuyến vẫn là một thách thức lớn.
-        """,
-        """
-        **Bài viết 3: Du lịch bền vững tại Việt Nam**
-
-        Việt Nam sở hữu nhiều danh lam thắng cảnh và di sản văn hóa phong phú, thu hút hàng triệu du khách mỗi năm. Tuy nhiên, du lịch ồ ạt đã gây ra nhiều tác động tiêu cực đến môi trường và cộng đồng địa phương. Do đó, du lịch bền vững đang trở thành xu hướng, với việc khuyến khích du khách tham gia vào các hoạt động bảo vệ môi trường, tôn trọng văn hóa địa phương và hỗ trợ kinh tế cho cộng đồng bản địa.
-        """,
-        """
-        **Bài viết 4: Ứng dụng trí tuệ nhân tạo trong y tế Việt Nam**
-
-        Trí tuệ nhân tạo (AI) đang được ứng dụng rộng rãi trong lĩnh vực y tế tại Việt Nam. Các bệnh viện và trung tâm y tế đã sử dụng AI để chẩn đoán hình ảnh, dự đoán bệnh tật và quản lý hồ sơ bệnh án. Ví dụ, Bệnh viện Bạch Mai đã triển khai hệ thống AI giúp chẩn đoán sớm bệnh ung thư phổi, cải thiện hiệu quả điều trị và giảm chi phí cho bệnh nhân. Tuy nhiên, việc đào tạo nhân lực và đảm bảo an toàn dữ liệu là những thách thức cần được giải quyết.
-        """,
-        """
-        **Bài viết 5: Phát triển năng lượng tái tạo ở Việt Nam**
-
-        Trước nhu cầu năng lượng ngày càng tăng và áp lực giảm phát thải khí nhà kính, Việt Nam đã đầu tư mạnh mẽ vào năng lượng tái tạo. Các dự án điện mặt trời và điện gió đã được triển khai tại nhiều tỉnh thành, đặc biệt là ở miền Trung và miền Nam. Chính phủ đặt mục tiêu đến năm 2030, năng lượng tái tạo sẽ chiếm 30% tổng công suất điện quốc gia. Tuy nhiên, việc tích hợp năng lượng tái tạo vào lưới điện và đảm bảo ổn định cung cấp điện là những thách thức cần được quan tâm.
-        """,
-        """
-        **Bài viết 6: Thực trạng và giải pháp cho giao thông đô thị tại Hà Nội**
-
-        Hà Nội, thủ đô của Việt Nam, đang đối mặt với vấn đề ùn tắc giao thông nghiêm trọng. Sự gia tăng nhanh chóng của số lượng xe cá nhân, hạ tầng giao thông chưa đáp ứng kịp và ý thức tham gia giao thông của người dân còn hạn chế là những nguyên nhân chính. Để giải quyết vấn đề này, thành phố đã triển khai nhiều giải pháp như phát triển hệ thống giao thông công cộng, xây dựng các tuyến đường vành đai và áp dụng công nghệ thông tin trong quản lý giao thông.
-        """,
-        """
-        **Bài viết 7: Vai trò của phụ nữ trong kinh tế Việt Nam hiện đại**
-
-        Phụ nữ Việt Nam ngày càng khẳng định vai trò quan trọng trong nền kinh tế. Họ không chỉ tham gia vào lực lượng lao động mà còn giữ nhiều vị trí lãnh đạo trong các doanh nghiệp và tổ chức. Các chương trình hỗ trợ khởi nghiệp cho phụ nữ đã giúp nhiều doanh nhân nữ thành công. Tuy nhiên, phụ nữ vẫn đối mặt với nhiều thách thức như chênh lệch thu nhập, định kiến giới và trách nhiệm gia đình.
-        """,
-        """
-        **Bài viết 8: Ảnh hưởng của mạng xã hội đến giới trẻ Việt Nam**
-
-        Mạng xã hội đã trở thành một phần không thể thiếu trong cuộc sống của giới trẻ Việt Nam. Nó mang lại nhiều lợi ích như kết nối, chia sẻ thông tin và giải trí. Tuy nhiên, việc sử dụng mạng xã hội quá mức cũng gây ra nhiều vấn đề như nghiện internet, giảm tương tác xã hội thực tế và ảnh hưởng đến sức khỏe tâm lý. Do đó, cần có sự hướng dẫn và giáo dục để giới trẻ sử dụng mạng xã hội một cách lành mạnh và hiệu quả.
-        """,
-        """
-        **Bài viết 9: Bảo tồn văn hóa truyền thống trong thời kỳ hội nhập**
-
-        Trong bối cảnh hội nhập quốc tế, việc bảo tồn và phát huy văn hóa truyền thống là một thách thức lớn đối với Việt Nam. Nhiều giá trị văn hóa đang dần bị mai một do ảnh hưởng của văn hóa ngoại lai và sự thay đổi của xã hội. Các chương trình giáo dục, lễ hội truyền thống và hoạt động cộng đồng đã được tổ chức nhằm giữ gìn và truyền bá văn hóa dân tộc cho thế hệ trẻ.
-        """,
-        """
-        **Bài viết 10: Tác động của biến đổi khí hậu đến nông nghiệp Việt Nam**
-
-        Biến đổi khí hậu đang ảnh hưởng nghiêm trọng đến nông nghiệp Việt Nam. Hiện tượng thời tiết cực đoan, mực nước biển dâng và sự thay đổi của mùa vụ đã gây ra nhiều khó khăn cho nông dân. Để thích ứng, nhiều biện pháp đã được áp dụng như chuyển đổi cơ cấu cây trồng, áp dụng công nghệ nông nghiệp thông minh và xây dựng hệ thống thủy lợi bền vững. Tuy nhiên, cần có sự hỗ trợ từ chính phủ và cộng đồng quốc tế để đảm bảo an ninh lương thực và sinh kế cho người dân.
-        """
-        ]
-        result = self.process_articles_in_batches(articles, batch_size=5)
-        print(result)
-        print(type(result)) # a list of list
-        for i, tags in enumerate(result):
-            print(f"Article {i+1} Tags: {', '.join(tags)}")
-        return
+    

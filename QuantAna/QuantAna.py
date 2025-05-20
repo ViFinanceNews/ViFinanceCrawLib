@@ -28,7 +28,7 @@ class QuantAnaIns:
         load_dotenv()
         genai.configure(api_key=os.getenv("API_KEY"))
 
-        self.model_name = 'gemini-2.0-flash-thinking-exp-01-21'
+        self.model_name = 'gemini-2.0-flash-lite'
         self.translator_model = genai.GenerativeModel(self.model_name)
         self.endpoint_name = 'sentence-feature-extract'
         self.sentiment_endpoint_name = 'multi-ling-sentiment-analysis'

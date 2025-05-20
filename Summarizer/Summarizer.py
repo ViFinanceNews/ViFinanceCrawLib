@@ -25,7 +25,7 @@ import subprocess
 
 class Summarizer:
     def __init__(self, stopword_file="vietnamese-stopwords-dash.txt", extractive_model="Fsoft-AIC/videberta-base", 
-             task='feature-extraction', instance_type='ml.t2.medium', endpoint_name='sentence-feature-extract', abstractive_model ='gemini-2.0-flash-thinking-exp-01-21'):
+             task='feature-extraction', instance_type='ml.t2.medium', endpoint_name='sentence-feature-extract', abstractive_model ='gemini-2.0-flash-lite'):
 
         # Get the directory of the current file (summarizer.py)
         current_dir = os.path.dirname(os.path.abspath(__file__))

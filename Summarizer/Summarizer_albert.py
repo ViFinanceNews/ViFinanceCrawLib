@@ -1,28 +1,33 @@
 from dotenv import load_dotenv
 import google.generativeai as genai
-import torch
 import numpy as np
-import torch.nn.functional as F
+# import torch
+# import torch.nn.functional as F
+# from torch.nn.utils.rnn import pad_sequence
 import re
-from torch.nn.utils.rnn import pad_sequence
-from nltk.tokenize import sent_tokenize, word_tokenize
 import nltk
 from typing import List
 import networkx as nx  # support the the Text-Rank Algorithm
-from transformers import AutoModel, AutoTokenizer # do not modify
 import os
-import json
+# import json
 import concurrent.futures
 import time
-from concurrent.futures import ThreadPoolExecutor
 from ViFinanceCrawLib.QualAna.ArticleFactCheckUtility import ArticleFactCheckUtility
 import queue
 from tqdm import tqdm
-import subprocess
+# import subprocess
 
 class SummarizerAlbert:
-    def __init__(self, stopword_file="vietnamese-stopwords-dash.txt",extractive_model="cservan/multilingual-albert-base-cased-32k",  
-             task='feature-extraction',  abstractive_model ='gemini-2.0-flash-thinking-exp-01-21'):
+    def __init__(self, stopword_file="vietnamese-stopwords-dash.txt",
+                extractive_model="cservan/multilingual-albert-base-cased-32k",  
+                task='feature-extraction',  
+                abstractive_model ='gemini-2.0-flash-lite'):
+
+        # setting up with abstractive model
+        load_dotenv()
+        genai.configure(api_key=os.getenv("API_KEY"))
+        self.abstractive_model = genai.GenerativeModel(abstractive_model)
+        self.qa_utility = ArticleFactCheckUtility()
 
         # Get the directory of the current file (summarizer.py)
         current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -36,6 +41,7 @@ class SummarizerAlbert:
             print(f"{resource} not found. Downloading...")
             nltk.download(resource)
             print(f"{resource} downloaded successfully.")
+        
         self.stopword = set([
             "và", "của", "là", "ở", "trong", "có", "được", "cho", "với", "tại",
             "như", "này", "đó", "một", "các", "những", "để", "vào", "ra", "lên",
@@ -55,31 +61,55 @@ class SummarizerAlbert:
             except Exception as e:
                 print(f"Error reading stopwords file: {e}. Using default stopwords only.")
         
-        model_root="/app/models/hub"
-        using_volume = os.path.isdir(model_root) and len(os.listdir(model_root)) > 0
-        print(f"[INFO] using_volume = {using_volume}")
-        if not using_volume:
-            print("🔍 Install model from Hugging Face model for feature extraction...")
-            self.tokenizer = AutoTokenizer.from_pretrained(extractive_model)
-            self.model = AutoModel.from_pretrained(extractive_model)
-        else:
-            print("🔍 Loading local Hugging Face model for feature extraction...")
-            albert_folder = self.find_model_folder("models--cservan--multilingual-albert-base-cased-32k", root_model_dir =model_root)
-            if albert_folder is None:
-                raise Exception("Albert Model folder(s) not found!")
-            self.tokenizer = AutoTokenizer.from_pretrained(albert_folder)
-            self.model = AutoModel.from_pretrained(albert_folder)
-            print("✅ Extractive model loaded locally.")
-
-        self.model.eval()  # Set model to eval mode
+        self._tokenizer = None
+        self._model = None
+        self.model_root="/app/models/hub"
+        self.extractive_model = extractive_model
         
-
-        # setting up with abstractive model
-        load_dotenv()
-        genai.configure(api_key=os.getenv("API_KEY"))
-        self.abstractive_model = genai.GenerativeModel(abstractive_model)
-        self.qa_utility = ArticleFactCheckUtility()
+        print("DONE")
         return
+
+    @property
+    def tokenizer(self):
+        if self._tokenizer is None or self._model is None:
+            self._tokenizer, self._model = self._load_extractive_model()
+        return self._tokenizer
+
+    @property
+    def model(self):
+        if self._model is None or self._tokenizer is None:
+            self._tokenizer, self._model = self._load_extractive_model()
+        return self._model
+
+    def _load_extractive_model(self):
+        print("📦 Importing transformers...")
+        import time
+        start = time.time()
+        from transformers import AutoModel, AutoTokenizer  # do not move this out
+        end = time.time()
+        print(f"🕒 transformers import time: {end - start:.2f} seconds")
+
+        using_volume = os.path.isdir(self.model_root) and len(os.listdir(self.model_root)) > 0
+        print(f"[INFO] using_volume = {using_volume}")
+
+        start = time.time()
+        if not using_volume:
+            print("🔍 Downloading model from Hugging Face...")
+            tokenizer = AutoTokenizer.from_pretrained(self.extractive_model)
+            model = AutoModel.from_pretrained(self.extractive_model)
+        else:
+            print("🔍 Loading model from local volume...")
+            albert_folder = self.find_model_folder("models--cservan--multilingual-albert-base-cased-32k", self.model_root)
+            if albert_folder is None:
+                raise Exception("❌ Model folder not found in volume.")
+            tokenizer = AutoTokenizer.from_pretrained(albert_folder)
+            model = AutoModel.from_pretrained(albert_folder)
+
+        end = time.time()
+        print(f"🕒 Model + Tokenizer loaded in {end - start:.2f} seconds")
+
+        model.eval()
+        return tokenizer, model
 
     def find_model_folder(self, model_name, root_model_dir):
         for root, dirs, files in os.walk(root_model_dir):
@@ -92,6 +122,7 @@ class SummarizerAlbert:
         return text.strip().lower()  # Basic normalization (can be extended)
 
     def pre_processing(self, text):
+      from nltk.tokenize import sent_tokenize, word_tokenize
       text = self.text_normalize(text)
       text = text.lower()
       # keep the some special token that bring semantic data
@@ -106,7 +137,6 @@ class SummarizerAlbert:
       for sentence in sentences:
           try:
               # tokenize
-              # tokens = word_tokenize(sentence).split()
               tokens = word_tokenize(sentence)
               # Combine "number + %""
               new_tokens = []
@@ -135,6 +165,7 @@ class SummarizerAlbert:
       return processed_sentences
     
     def get_embeddings(self, texts: List[str]):
+        import torch
         """
         Get sentence embeddings for a list of texts using a locally loaded transformer model.
         Uses dynamic batching and mean pooling over token embeddings.
@@ -168,10 +199,12 @@ class SummarizerAlbert:
         return torch.cat(all_embeddings, dim=0)
     
     def calculate_similarity_matrix(self, embeddings):
-        # Reduce sequence dimension (mean pooling)
-        sentence_level_embeddings = embeddings.mean(dim=1)  # Shape: (6, 768)
-        embeddings_tensor = sentence_level_embeddings.clone().detach().float()
-        normed = F.normalize(embeddings_tensor, p=2, dim=1)  # Normalize each vector
+        import torch
+        import torch.nn.functional as F
+       
+        # embeddings: [num_sentences, hidden_dim]
+        embeddings_tensor = embeddings.clone().detach().float()
+        normed = F.normalize(embeddings_tensor, p=2, dim=1)  # Normalize each vector using L2 norm
         similarity_matrix = torch.mm(normed, normed.T).numpy()  # Cosine sim = dot product of normalized vectors
         np.fill_diagonal(similarity_matrix, 0)
         return similarity_matrix
@@ -181,10 +214,8 @@ class SummarizerAlbert:
             print(f"Warning: Number of sentences ({len(sentences)}) is less than requested ({num_sentences}). Returning all sentences.")
             return sentences
         
-        # Parallel embedding extraction using ThreadPoolExecutor for all sentences
-        with concurrent.futures.ThreadPoolExecutor() as executor: 
-            sentence_embeddings = list(executor.map(self.get_embeddings, [[s] for s in sentences]))  # Parallelize each sentence
-
+        sentence_embeddings = self.get_embeddings(sentences)
+        from torch.nn.utils.rnn import pad_sequence
         sentence_embeddings =  pad_sequence(sentence_embeddings, batch_first=True, padding_value=0) # Convert list to tensor
         similarity_matrix = self.calculate_similarity_matrix(sentence_embeddings)
 
@@ -274,53 +305,26 @@ class SummarizerAlbert:
         }
         return article_sum  # Return structured dictionary (not string)
 
-    def multi_source_extractive(self, articles):
+    def multi_source_extractive(self, articles, max_workers=4):
         """Extract key sentences from multiple articles using parallel processing."""
-        
+
         if not articles:
             return []
 
-        article_queue = queue.Queue()
-        result_queue = queue.Queue()
-        all_extractive_articles = []
+        results = []
+        with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
+            futures = {executor.submit(self.process_article, article): article for article in articles}
+            for future in tqdm(concurrent.futures.as_completed(futures), total=len(futures), desc="Extracting Sentences"):
+                try:
+                    result = future.result()
+                    if result:
+                        results.append(result)
+                except Exception as e:
+                    print(f"Error processing article: {e}")
+        
+        return results
 
-        # Initialize progress bar
-        progress_bar = tqdm(total=len(articles), desc="Extracting Sentences", unit="article", position=0, leave=True)
 
-        def fetch_articles():
-            """Enqueue articles for processing."""
-            for article in articles:
-                article_queue.put(article)
-            article_queue.put(None)  # Sentinel to signal completion
-
-        def extract_sentences():
-            """Extract sentences from articles and store results in the queue."""
-            while True:
-                article = article_queue.get()
-                if article is None:
-                    result_queue.put(None)  # Sentinel for completion
-                    break
-                article_ex = self.process_article(article)
-                if article_ex:
-                    result_queue.put(article_ex)
-                progress_bar.update(1)  # Update tqdm progress
-
-        def collect_results():
-            """Collect extracted results from the queue."""
-            while True:
-                result = result_queue.get()
-                if result is None:
-                    break
-                all_extractive_articles.append(result)
-
-        with concurrent.futures.ThreadPoolExecutor() as executor:
-            executor.submit(fetch_articles)
-            executor.submit(extract_sentences)
-            future = executor.submit(collect_results)
-            future.result()  # Wait for all results
-
-        progress_bar.close()  # Close progress bar when done
-        return all_extractive_articles
 
     def multi_article_synthesis(self, articles, word_limit=200):
         """
@@ -340,6 +344,7 @@ class SummarizerAlbert:
             return "No articles provided for synthesis."
 
         all_extractive_sentences = self.multi_source_extractive(articles)
+    
 
         # Step 2: Generate a cohesive abstractive summary in a single API call
         prompt = f"""
@@ -350,24 +355,34 @@ class SummarizerAlbert:
         {" ".join(f"- {sentence}" for sentence in all_extractive_sentences)}
         ---
 
+                
         **Yêu cầu:**  
         1. Hợp nhất nội dung từ nhiều bài báo thành một đoạn tóm tắt mạch lạc.  
         2. Trình bày súc tích, dễ hiểu, giữ nguyên ý nghĩa chính.  
         3. Không lặp lại nguyên văn, diễn đạt tự nhiên.  
         4. Giới hạn độ dài tối đa khoảng {word_limit} từ.  
         5. Không được thêm bất cứ phản hồi hay biểu cảm nào dư thừa, chỉ được có tóm tắt.  
-        6. Sử dụng trích dẫn trong văn bản theo định dạng **APA 7th**: **[Tên tác giả, Năm](URL)**.  
-        - **Ví dụ:** ([Smith, 2020](https://example.com)) hoặc ([Nguyen & Tran, 2023](https://example.com)).  
+        6. Sử dụng trích dẫn trong văn bản theo định dạng APA 7th: [Tên tác giả, Năm].  
+        - **Ví dụ:** ([Smith, 2020]) hoặc ([Nguyen & Tran, 2023]).  
         7. Chỉ tóm tắt, không thêm ý kiến chủ quan hay bình luận.  
 
-        **Ví dụ về định dạng mong muốn:** (CHỈ ĐƯỢC THAM KHẢO) 
+        **Ví dụ về định dạng mong muốn:** *(CHỈ ĐƯỢC THAM KHẢO)*
 
-        Lorem ipsum dolor sit amet, consectetur adipiscing elit. Fusce varius velit ut turpis fermentum, id tincidunt orci malesuada ([Author, 2020](https://example.com)).  
-        Vestibulum ac nunc in urna sodales condimentum nec id orci ([Author & Coauthor, 2021](https://example.com)).  
-        Phasellus tincidunt, sapien at tristique vulputate, purus leo fringilla turpis, eu euismod nulla ligula a tortor ([Another Author, 2022](https://example.com)).  
-        Integer nec turpis vitae metus tristique fermentum. Sed ut lectus vitae quam consectetur cursus ([Researcher, 2023](https://example.com)).  
+        {{
+            "synthesis_paragraph": "Lorem ipsum dolor sit amet, consectetur adipiscing elit. [1] Curabitur feugiat ex at quam malesuada sagittis. Aliquam euismod eros tempor magna iaculis placerat. Nam vel faucibus nisl, et convallis nibh. Etiam tempor pulvinar scelerisque. Integer non felis quis risus varius congue nec et nisl [2]. Donec pretium sem eget luctus iaculis. Vestibulum eget condimentum lorem, vitae elementum dui. Vestibulum gravida a magna id imperdiet. Proin lacinia urna a volutpat convallis.",
+            "reference": {{
+                "1": {{
+                    "title": "Author & Coauthor, 2021",
+                    "url": "https://example.com"
+                }},
+                "2": {{
+                    "title": "Researcher, 2023",
+                    "url": "https://example.com"
+                }}
+            }}
+        }}
 
-        **HẾT VÍ DỤ***
+        **HẾT VÍ DỤ**
 
         Hãy viết đoạn tóm tắt chính xác và khách quan:
         """
@@ -419,104 +434,4 @@ class SummarizerAlbert:
 
         return answer, all_evidences, query
         
-    def test(self):
-        articles = [
-        {
-            "title": "The Future of AI in Healthcare",
-            "main_text": "Artificial Intelligence is transforming the healthcare industry by improving diagnostics, predicting diseases, and personalizing treatment plans. AI-powered systems analyze vast amounts of medical data, enabling early detection of conditions such as cancer and cardiovascular diseases. Machine learning algorithms help doctors make faster, more accurate diagnoses, reducing human error. Robotics and AI-driven tools assist in complex surgeries, improving precision and patient outcomes. Moreover, AI chatbots enhance patient interactions, providing instant support and medical guidance. Despite ethical concerns and data privacy issues, the potential of AI in healthcare continues to expand, promising a more efficient and accessible future.",
-            "url": "https://example.com/ai-healthcare",
-            "author": ["Dr. John Smith"],
-            "date_publish": "2024-01-15"
-        },
-        {
-            "title": "Quantum Computing: A New Era",
-            "main_text": "Quantum computing is revolutionizing industries by solving problems beyond classical computers' reach. Unlike traditional binary-based systems, quantum computers leverage qubits, enabling parallel computations. This technology accelerates cryptography, optimizing logistics, and advancing drug discovery. Companies like IBM and Google invest in developing scalable quantum processors, pushing computational boundaries. Researchers explore quantum algorithms to enhance AI and data security. However, challenges remain, including error correction and hardware stability. As quantum technology evolves, industries must prepare for its impact, reshaping finance, material science, and cybersecurity. The race for quantum supremacy continues, driving innovation and new technological breakthroughs worldwide.",
-            "url": "https://example.com/quantum-computing",
-            "author": ["Alice Johnson", "Bob Williams"],
-            "date_publish": "2024-02-10"
-        },
-        {
-            "title": "Climate Change and Renewable Energy",
-            "main_text": "Climate change remains one of the greatest challenges of our time, with rising temperatures and extreme weather events increasing globally. Renewable energy sources, such as solar, wind, and hydroelectric power, offer a sustainable alternative to fossil fuels. Governments and corporations invest in clean energy projects to reduce carbon emissions and slow global warming. Technological advancements enhance energy storage solutions, improving grid stability and efficiency. However, transitioning to renewables requires substantial investment and infrastructure upgrades. Public awareness and policy changes play a crucial role in accelerating this shift. Embracing renewable energy is vital for a cleaner and sustainable future.",
-            "url": "https://example.com/climate-renewable",
-            "author": ["Emily Davis"],
-            "date_publish": "2024-03-05"
-        },
-        {
-            "title": "Advancements in Natural Language Processing",
-            "main_text": "Natural Language Processing (NLP) has seen rapid advancements, enhancing machine comprehension of human language. AI-driven NLP models, such as GPT and BERT, enable chatbots, language translation, and sentiment analysis. These technologies improve search engines, automate customer service, and facilitate content creation. Pre-trained models learn from vast datasets, understanding context and semantics more accurately. However, ethical concerns arise, including biases in AI responses and misinformation risks. Researchers work to enhance NLP fairness and interpretability. With continuous improvements, NLP reshapes communication, making human-computer interactions more seamless, efficient, and intelligent across various industries, from healthcare to finance and education.",
-            "url": "https://example.com/nlp-advancements",
-            "author": ["Michael Lee"],
-            "date_publish": "2024-04-20"
-        },
-        {
-            "title": "Cybersecurity Trends in 2024",
-            "main_text": "Cybersecurity is a top priority as cyber threats grow in complexity. Organizations face increasing risks from ransomware, phishing, and data breaches. AI-driven security solutions enhance threat detection and response time. Zero-trust security models are gaining popularity, requiring continuous verification of user identities. Blockchain technology strengthens data security by decentralizing sensitive information. Companies invest in cybersecurity awareness training to mitigate risks from human error. Regulatory frameworks tighten, enforcing stricter compliance measures. As cybercriminals adopt advanced techniques, cybersecurity innovations must evolve to protect digital assets, ensuring businesses and individuals remain secure in an interconnected and data-driven world.",
-            "url": "https://example.com/cybersecurity-trends",
-            "author": ["Sophia Martinez"],
-            "date_publish": "2024-05-30"
-        },
-        {
-            "title": "The Role of Blockchain in Finance",
-            "main_text": "Blockchain technology is revolutionizing finance by enhancing transparency, security, and efficiency. Decentralized ledgers eliminate the need for intermediaries in transactions, reducing costs. Cryptocurrencies like Bitcoin and Ethereum showcase blockchain's potential in digital payments. Smart contracts enable automated and trustless agreements, streamlining business operations. Financial institutions adopt blockchain to improve cross-border transactions and fraud prevention. However, regulatory challenges and scalability issues persist. Central banks explore digital currencies (CBDCs) to modernize financial systems. As blockchain adoption grows, its impact on banking, investment, and asset management expands, reshaping traditional financial structures and fostering a more decentralized economic landscape.",
-            "url": "https://example.com/blockchain-finance",
-            "author": ["Daniel Brown"],
-            "date_publish": "2024-06-12"
-        },
-        {
-            "title": "The Impact of AI on Job Markets",
-            "main_text": "Artificial Intelligence is reshaping job markets by automating tasks and creating new opportunities. While AI streamlines repetitive work, concerns arise about job displacement in sectors like manufacturing and customer service. However, AI also generates demand for new roles, such as AI ethics specialists and data scientists. Upskilling and reskilling programs help workers adapt to this evolving landscape. Governments and businesses invest in AI education to bridge the skill gap. AI-human collaboration enhances productivity, allowing employees to focus on creative and strategic tasks. The future workforce will require adaptability as AI-driven transformation accelerates across industries worldwide.",
-            "url": "https://example.com/ai-jobs",
-            "author": ["Olivia Wilson"],
-            "date_publish": "2024-07-08"
-        },
-        {
-            "title": "Autonomous Vehicles and Transportation",
-            "main_text": "Self-driving cars are revolutionizing urban transportation by improving road safety and reducing traffic congestion. AI-powered sensors and cameras enable real-time decision-making, minimizing human errors. Autonomous vehicles (AVs) promise greater accessibility for individuals with mobility challenges. Ride-sharing services invest in AV technology, reshaping mobility services. However, regulatory and ethical challenges remain, including accident liability and cybersecurity risks. Cities must upgrade infrastructure to accommodate AV adoption. As testing and advancements continue, the future of autonomous transportation moves closer to reality. The transition to driverless technology requires collaboration between tech firms, policymakers, and the public for widespread acceptance.",
-            "url": "https://example.com/autonomous-vehicles",
-            "author": ["David Clark", "Emma White"],
-            "date_publish": "2024-08-22"
-        },
-        {
-            "title": "Breakthroughs in Space Exploration",
-            "main_text": "Space exploration advances with cutting-edge technology, enabling deeper cosmic exploration. NASA, SpaceX, and other agencies launch missions to Mars and beyond. Private companies innovate spacecraft and reusable rockets, reducing mission costs. The search for extraterrestrial life intensifies, with new telescopes analyzing distant planets. Lunar exploration aims at establishing sustainable bases for future space travel. Satellite technology enhances global communication and Earth monitoring. Challenges include funding constraints and space debris management. As technology progresses, interplanetary travel and asteroid mining become feasible. The future of space exploration holds promise, shaping humanity’s role in the cosmos.",
-            "url": "https://example.com/space-exploration",
-            "author": ["Lucas Miller"],
-            "date_publish": "2024-09-14"
-        },
-        {
-            "title": "The Ethics of Artificial Intelligence",
-            "main_text": "The ethical implications of artificial intelligence spark global debates. Bias in AI algorithms can reinforce discrimination, affecting hiring, lending, and law enforcement. Privacy concerns arise as AI systems collect vast amounts of personal data. Transparency in AI decision-making is crucial for accountability. Researchers advocate for ethical AI frameworks to prevent misuse. Governments and tech companies collaborate on AI regulations and responsible AI development. Public awareness of AI ethics grows as AI systems become more integrated into daily life. Ensuring fairness, accountability, and human-centric AI remains a critical challenge for future advancements.",
-            "url": "https://example.com/ai-ethics",
-            "author": ["Sophia Garcia"],
-            "date_publish": "2024-10-29"
-        }
-    ]
-        articles_1 = [
-        {
-            "title": "The Future of AI in Healthcare",
-            "main_text": "Artificial Intelligence is transforming the healthcare industry by improving diagnostics, predicting diseases, and personalizing treatment plans. AI-powered systems analyze vast amounts of medical data, enabling early detection of conditions such as cancer and cardiovascular diseases. Machine learning algorithms help doctors make faster, more accurate diagnoses, reducing human error. Robotics and AI-driven tools assist in complex surgeries, improving precision and patient outcomes. Moreover, AI chatbots enhance patient interactions, providing instant support and medical guidance. Despite ethical concerns and data privacy issues, the potential of AI in healthcare continues to expand, promising a more efficient and accessible future.",
-            "url": "https://example.com/ai-healthcare",
-            "author": ["Dr. John Smith"],
-            "date_publish": "2024-01-15"
-        },
-        {
-            "title": "Quantum Computing: A New Era",
-            "main_text": "Quantum computing is revolutionizing industries by solving problems beyond classical computers' reach. Unlike traditional binary-based systems, quantum computers leverage qubits, enabling parallel computations. This technology accelerates cryptography, optimizing logistics, and advancing drug discovery. Companies like IBM and Google invest in developing scalable quantum processors, pushing computational boundaries. Researchers explore quantum algorithms to enhance AI and data security. However, challenges remain, including error correction and hardware stability. As quantum technology evolves, industries must prepare for its impact, reshaping finance, material science, and cybersecurity. The race for quantum supremacy continues, driving innovation and new technological breakthroughs worldwide.",
-            "url": "https://example.com/quantum-computing",
-            "author": ["Alice Johnson", "Bob Williams"],
-            "date_publish": "2024-02-10"
-        },
-        {
-            "title": "Climate Change and Renewable Energy",
-            "main_text": "Climate change remains one of the greatest challenges of our time, with rising temperatures and extreme weather events increasing globally. Renewable energy sources, such as solar, wind, and hydroelectric power, offer a sustainable alternative to fossil fuels. Governments and corporations invest in clean energy projects to reduce carbon emissions and slow global warming. Technological advancements enhance energy storage solutions, improving grid stability and efficiency. However, transitioning to renewables requires substantial investment and infrastructure upgrades. Public awareness and policy changes play a crucial role in accelerating this shift. Embracing renewable energy is vital for a cleaner and sustainable future.",
-            "url": "https://example.com/climate-renewable",
-            "author": ["Emily Davis"],
-            "date_publish": "2024-03-05"
-        }
-    ]
-        synthesis = self.multi_article_synthesis(articles=articles)
-        print("END RESULT" + "\n")
-        print(synthesis)
-
     

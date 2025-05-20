@@ -7,10 +7,6 @@
 """
 import sys
 from ViFinanceCrawLib.article_database.TextCleaning import TextCleaning as tc
-import torch
-from detoxify import Detoxify
-from sentence_transformers import util
-from transformers import pipeline, AutoTokenizer, AutoModel, AutoModelForSequenceClassification
 from typing import List
 import numpy as np
 import pandas as pd
@@ -21,6 +17,8 @@ import os
 from pathlib import Path
 from sklearn.metrics.pairwise import cosine_similarity
 import re
+# from sentence_transformers import util
+
 
 class QuantAnaInsAlbert:
     
@@ -28,9 +26,27 @@ class QuantAnaInsAlbert:
         load_dotenv()
         genai.configure(api_key=os.getenv("API_KEY"))
 
-        self.model_name = 'gemini-2.0-flash-thinking-exp-01-21'
+        self.model_name = 'gemini-2.0-flash-lite'
         self.translator_model = genai.GenerativeModel(self.model_name)
+        import torch
         self.device = device or ("cuda" if torch.cuda.is_available() else "cpu")
+        
+        # place holder for lazy-loading
+        self._models_loaded = False
+        self.sentiment_pipeline = None
+        self.embed_model_name = None
+        self.embed_tokenizer = None
+        self.embed_model = None
+        self.toxicity_model = None
+
+        self._set_up_vncorenlp()
+        print("Load QuantAna done !")
+  
+    def load_models(self, model_root="/app/models/hub"):
+        from detoxify import Detoxify
+        from transformers import pipeline, AutoTokenizer, AutoModel, AutoModelForSequenceClassification
+        if self._models_loaded:
+            return  # Already loaded, do nothing
         
         using_volume = os.path.isdir(model_root) and len(os.listdir(model_root)) > 0
         print(f"[INFO] using_volume = {using_volume}")
@@ -73,9 +89,7 @@ class QuantAnaInsAlbert:
                 self.toxicity_model = Detoxify(model_type="original-small", checkpoint=toxicity_path + "/" + model_name)
             else:
                 self.toxicity_model = Detoxify(model_type="original-small")
-
-        self._set_up_vncorenlp()
-  
+        print("Sentiment Model  & Toxicity Model loaded Successfully")
 
     def find_model_folder_checkpoint_keyword(self, keyword, root_model_dir):
         """
@@ -111,6 +125,7 @@ class QuantAnaInsAlbert:
         self.rdrsegmenter = VnCoreNLP(str(file_path), annotators="wseg", max_heap_size='-Xmx500m')
 
     def get_embeddings(self, texts: List[str]):
+        import torch
         """
         Get sentence embeddings for a list of texts using a locally loaded transformer model.
         Uses dynamic batching and mean pooling over token embeddings.
@@ -261,6 +276,7 @@ class QuantAnaInsAlbert:
             return ""
 
     def sentiment_analysis(self, article_text):
+        self.load_models(model_root="/app/models/hub")
         article_text = re.sub(r"\[Câu \d+\]\s*", "", article_text)
         print(article_text)
         try:
@@ -366,6 +382,7 @@ class QuantAnaInsAlbert:
             A dictionary with the format: (the printed out result would be translate to Vietnamese)
                 {"Toxicity: Score", "Insult": Score, "Threat": Score, "Identity Attack" : Score, "Obscene" :Score}
         """
+        self.load_models()
         try:
             tokenized_text = self.rdrsegmenter.tokenize(article_text)
             pre_processed_sentences = self.combine_tokens(tokenized_text[0])

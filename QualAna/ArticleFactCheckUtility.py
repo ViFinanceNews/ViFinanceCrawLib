@@ -221,6 +221,8 @@ class ArticleFactCheckUtility():
                 [Số thứ tự bài báo ]: Tiêu đề - nguồn -  [url] \n
                 [Số thứ tự bài báo ]: Tiêu đề - nguồn -  [url] \n
             ....
+
+            LƯU Ý: Trường: [Mức độ tin cậy] CHỈ DƯỢC TRẢ LẠI MỘT GIÁ TRỊ KẾT QUẢ DUY NHẤT
             ### **Ví dụ cách chèn liên kết:**  
             - "Bằng chứng từ [Số thứ tự bài báo] cho thấy rằng..."  
             - "Theo thông tin từ bài viết này [Số thứ tự bài báo], ..."  

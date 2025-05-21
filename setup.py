@@ -27,5 +27,5 @@ setup(
         "python-dotenv"
     ],
     description="A Vietnamese Financial Crawling and Analysis Library",
-    python_requires='>=3.7',
+    python_requires='>=3.11',
 )

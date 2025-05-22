@@ -311,7 +311,6 @@ class AQD:
         except Exception as e:
             print(f"❌ Error retrieving vote for user {user_id}, url {url}: {e}")
             return 0  # Fallback to neutral on error
-    
 
     # Doing the upsert after the Session done
     def upsert_articles_from_user_hash(self, user_id: str, session_id: str):

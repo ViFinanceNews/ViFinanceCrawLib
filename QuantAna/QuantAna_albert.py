@@ -368,13 +368,24 @@ class QuantAnaInsAlbert:
         """
         return " ".join(tokens).replace("_", "")
 
-    def normalize_result(self, value):
-        # Check if the value is a numpy float type
-        if isinstance(value, np.float32) or isinstance(value, np.float64):
-            return float(value) * 100  # Return the score
-        else:
-            return float(value) * 100  # Return the raw value as a string
+    # def normalize_result(self, value):
+    #     #Check if the value is a numpy float type
+    #     if isinstance(value, np.float32) or isinstance(value, np.float64):
+    #         return float(value) * 100  # Return the score
+    #     else:
+    #         return float(value) * 100  # Return the raw value as a string
 
+    def normalize_result(self, value):
+        """
+        Convert a float score in range [0.0, 1.0] to a discrete score in range [1, 10].
+        """
+        try:
+            real_value = float(value)
+            discrete_score = int(round(real_value * 9)) + 1  # Map 0.0 -> 1, 1.0 -> 10
+            return min(max(discrete_score, 1), 10)  # Ensure within range
+        except Exception:
+            return 1  # Fallback if error occurs
+    
     def detect_toxicity(self, article_text: str):
         """Detects toxicity and misinformation in the article.
            Parameter: article_text (Vietnamese String need to be pre-process and segmentized)

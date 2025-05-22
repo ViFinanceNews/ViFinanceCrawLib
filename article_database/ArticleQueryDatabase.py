@@ -55,7 +55,7 @@ class AQD:
             if not redis_article:
                 return "Cannot retrieve article"
 
-            article_id = self._insert_article(redis_article)
+            article_id = self._insert_or_update_article(redis_article)
             if not article_id:
                 return "Insert failed"
 
@@ -91,15 +91,15 @@ class AQD:
             print(f"❌ Error decoding Redis article JSON: {e}")
             return None
 
-    def _insert_article(self, article_data):
+    def _insert_or_update_article(self, article_data):
         """
-        Insert article metadata into the 'article' table.
+        Insert article if title does not exist; otherwise, update existing article.
 
         Args:
             article_data (dict): The article fields.
 
         Returns:
-            int | None: The inserted article ID, or None on failure.
+            int | None: The inserted/updated article ID, or None on failure.
         """
         structured_data = {
             "author": article_data.get("author"),
@@ -107,20 +107,59 @@ class AQD:
             "url": article_data.get("url"),
             "image_url": article_data.get("image_url"),
             "date_publish": article_data.get("date_publish"),
+            "up_vote": article_data.get("upvotes"),
         }
-        print(f"📝 Article data to be inserted: {structured_data}")
+        title = structured_data["title"]
 
-        query = """
-            INSERT INTO article (author, title, url, image_url, date_publish)
-            VALUES (%s, %s, %s, %s, %s)
-            RETURNING article_id
-        """
-        row = self.db.execute_query(query, params=tuple(structured_data.values()), fetch_one=True, commit=True)
+        # 1. Check if title exists and get article_id
+        check_query = "SELECT article_id FROM article WHERE title = %s LIMIT 1;"
+        row = self.db.execute_query(check_query, params=(title,), fetch_one=True)
+
         if row:
-            print(f"📰 Inserted article with ID: {row[0]}")
-            return row[0]
-        print("❌ Failed to insert article into the database.")
-        return None
+            # 2. If exists, update the article with new data
+            article_id = row[0]
+            update_query = """
+                UPDATE article SET
+                    author = %s,
+                    url = %s,
+                    image_url = %s,
+                    date_publish = %s,
+                    up_vote = up_vote + %s,
+                    saved_at = CURRENT_TIMESTAMP
+                WHERE article_id = %s
+                RETURNING article_id;
+            """
+            params = (
+                structured_data["author"],
+                structured_data["url"],
+                structured_data["image_url"],
+                structured_data["date_publish"],
+                structured_data["up_vote"],
+                article_id,
+            )
+            updated_row = self.db.execute_query(update_query, params=params, fetch_one=True, commit=True)
+            if updated_row:
+                print(f"🔄 Updated article with ID: {updated_row[0]}")
+                return updated_row[0]
+            else:
+                print("❌ Failed to update the article.")
+                return None
+
+        else:
+            # 3. If not exists, insert new article
+            insert_query = """
+                INSERT INTO article (author, title, url, image_url, date_publish, up_vote)
+                VALUES (%s, %s, %s, %s, %s, %s)
+                RETURNING article_id;
+            """
+            params = tuple(structured_data.values())
+            inserted_row = self.db.execute_query(insert_query, params=params, fetch_one=True, commit=True)
+            if inserted_row:
+                print(f"📰 Inserted article with ID: {inserted_row[0]}")
+                return inserted_row[0]
+            else:
+                print("❌ Failed to insert the article.")
+                return None
 
     def _process_tags(self, tags):
         """
@@ -172,7 +211,7 @@ class AQD:
 
     def _link_user_article(self, user_id, article_id, vote_type):
         """
-        Link an article to a user in the account_article table.
+        Link an article to a user in the account_article table or update their vote.
 
         Args:
             user_id (str): The user’s ID.
@@ -183,14 +222,18 @@ class AQD:
             vote = vote_type if vote_type in [-1, 0, 1] else 0
             if vote_type not in [-1, 0, 1]:
                 print("⚠️ Invalid or missing vote_type. Defaulting to 0.")
+
             query = """
                 INSERT INTO account_article (user_id, article_id, personal_vote)
                 VALUES (%s, %s, %s)
+                ON CONFLICT (user_id, article_id)
+                DO UPDATE SET personal_vote = EXCLUDED.personal_vote
             """
             self.db.execute_query(query, params=(user_id, article_id, vote), commit=True)
-            print(f"👤 Linked user {user_id} to article {article_id} with vote {vote}")
+            print(f"🔄 Linked or updated user {user_id} for article {article_id} with vote {vote}")
+
         except Exception as e:
-            print(f"❌ Failed to link user to article: {e}")
+            print(f"❌ Failed to link or update user-article relation: {e}")
 
     def get_userID_from_session(self, SESSION_ID: str):
         """
@@ -268,3 +311,84 @@ class AQD:
         except Exception as e:
             print(f"❌ Error retrieving vote for user {user_id}, url {url}: {e}")
             return 0  # Fallback to neutral on error
+
+    # Doing the upsert after the Session done
+    def upsert_articles_from_user_hash(self, user_id: str, session_id: str):
+        """
+        Main method to:
+        - Connect DB
+        - Get filtered article keys from Redis
+        - Upsert each article using _insert_or_update_article()
+        - Delete the Redis key if upsert successful and TTL criteria met
+        - Upsert will not include the vote data from user point of view (like the save mode with 0,1,-1) - but all the vote data will be recorded
+        """
+
+        session_key = f"session:{session_id}"  # this was map to user_id - the TTL = 1 hours
+        user_key = f"user:{user_id}:personal_vote" # map to a dict with {url : personal_vote} - the TTL = Forever
+
+        try:
+            self.db.connect()
+            print("🔄 Starting bulk upsert operation for articles from Redis.")
+
+            article_map = self.redis_client.hgetall(user_key) # A dictionary
+            
+            urls_list = [key.decode('utf-8') for key in article_map.keys()]
+
+            upserted_count = 0
+
+            redis_data_list = self.redis_client.mget(urls_list)
+
+            
+            for key, redis_data in zip(urls_list, redis_data_list):
+                if not redis_data:
+                    continue
+                
+                if not redis_data:
+                    print(f"⚠️ Empty data for key {key}")
+                    continue
+
+                try:
+                    article_data = json.loads(redis_data.decode("utf-8"))
+                except Exception as e:
+                    print(f"❌ JSON decode error for key {key}: {e}")
+                    continue
+
+                title = article_data.get("title")
+                date_publish = article_data.get("date_publish")
+
+                if not title or not date_publish:
+                    print(f"⚠️ Missing required field(s) title/date_publish for key: {key}")
+                    continue
+
+                # Use the reusable insert/update method here
+                inserted_id = self._insert_or_update_article(article_data)
+
+                if inserted_id: # article_id - Only delete Redis key if DB operation successful
+                    session_exists = self.redis_client.exists(session_key)
+                    ttl = self.redis_client.ttl(key)
+                    if not session_exists: 
+                        if (ttl == -1 or ttl > 3600): # if the TTL > 1 hour
+                            self.redis_client.delete(key)
+                            print(f"✅ Upserted article ID {inserted_id} and deleted Redis key: {key}")
+                        print(f"✅ Upserted article ID {inserted_id} and not Redis key because self-expire: {key}")
+                    upserted_count += 1
+                else:
+                    print(f"❌ Failed to upsert article from Redis key: {key}")
+
+            # Check if session still exists 
+            session_exists = self.redis_client.exists(session_key)
+            if not session_exists: 
+                self.redis_client.delete(user_key)
+                print(f"🗑️ Session expired. Deleted user Redis hash for user for personal_vote {user_id}.")
+            else:
+                print(f"🟢 Session active. Kept Redis hash for user working {user_id}.")
+
+
+            print(f"🔄 Upsert operation completed. Total upserted: {upserted_count}")
+            return {"upserted": upserted_count}
+
+        except Exception as e:
+            print(f"❌ Critical error during bulk upsert operation: {e}")
+            return {"error": str(e)}
+    
+

@@ -298,11 +298,16 @@ class QuantAnaIns:
             )
             sentiment_result = json.loads(response['Body'].read())[0]  # result = list of token embeddings
             sentiment_label = sentiment_result['label']
-            sentiment_score = sentiment_result['score']
+            raw_score = sentiment_result['score']
+            
+            # Normalize score to 1–10
+            discrete_score = int(round(raw_score * 9)) + 1
+            discrete_score = min(max(discrete_score, 1), 10)  # Ensure it's in [1, 10]
+
             return {
-                "sentiment_label": sentiment_label,  # NEG: Tiêu cực, POS: Tích cực, NEU: Trung tính
-                "sentiment_score": sentiment_score
-                }
+                "sentiment_label": sentiment_label,  # e.g., 'POSITIVE', 'NEGATIVE', 'NEUTRAL'
+                "sentiment_score": discrete_score
+            }
         except Exception as e:
             print(f"[ERROR] SageMaker Invocation Failed: {str(e)}")
             return None

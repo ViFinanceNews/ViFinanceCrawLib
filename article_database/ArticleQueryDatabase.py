@@ -340,9 +340,7 @@ class AQD:
 
             
             for key, redis_data in zip(urls_list, redis_data_list):
-                if not redis_data:
-                    continue
-                
+               
                 if not redis_data:
                     print(f"⚠️ Empty data for key {key}")
                     continue
@@ -365,12 +363,16 @@ class AQD:
 
                 if inserted_id: # article_id - Only delete Redis key if DB operation successful
                     session_exists = self.redis_client.exists(session_key)
-                    ttl = self.redis_client.ttl(key)
+                    
                     if not session_exists: 
+                        ttl = self.redis_client.ttl(key)
                         if (ttl == -1 or ttl > 3600): # if the TTL > 1 hour
                             self.redis_client.delete(key)
                             print(f"✅ Upserted article ID {inserted_id} and deleted Redis key: {key}")
-                        print(f"✅ Upserted article ID {inserted_id} and not Redis key because self-expire: {key}")
+                        else:
+                            print(f"✅ Upserted but Redis key {key} will expire soon (TTL: {ttl}s), not deleted manually.")
+                    else:
+                        print(f"✅ Upserted, session still active. Keeping Redis key: {key}")
                     upserted_count += 1
                 else:
                     print(f"❌ Failed to upsert article from Redis key: {key}")
@@ -379,7 +381,7 @@ class AQD:
             session_exists = self.redis_client.exists(session_key)
             if not session_exists: 
                 self.redis_client.delete(user_key)
-                print(f"🗑️ Session expired. Deleted user Redis hash for user for personal_vote {user_id}.")
+                print(f"🗑️ Deleted user:{user_id}:personal_vote after session expired.")
             else:
                 print(f"🟢 Session active. Kept Redis hash for user working {user_id}.")
 

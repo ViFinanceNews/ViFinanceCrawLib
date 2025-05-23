@@ -170,31 +170,33 @@ class SummarizerAlbert:
         Get sentence embeddings for a list of texts using a locally loaded transformer model.
         Uses dynamic batching and mean pooling over token embeddings.
         """
+        device = next(self.model.parameters()).device  # Get model device
         num_texts = len(texts)
-
+ 
         # Dynamically choose a reasonable even batch size
         if num_texts <= 2:
             batch_size = num_texts
         else:
             batch_size = max(2, (num_texts // 4) * 2)  # Ensure it's even
-
+ 
         all_embeddings = []
-
+ 
         for i in range(0, num_texts, batch_size):
             batch = texts[i:i + batch_size]
-
+ 
             # Tokenize the batch with padding and truncation
             inputs = self.tokenizer(batch, return_tensors="pt", padding=True, truncation=True)
-
+            inputs = {k: v.to(device) for k, v in inputs.items()}  # ⬅️ move to same device
+ 
             # Forward pass (no gradients needed)
             with torch.no_grad():
                 outputs = self.model(**inputs)
-
+ 
             # Mean pooling over the token dimension (dim=1)
             batch_embeddings = outputs.last_hidden_state.mean(dim=1)  # shape: (batch_size, hidden_dim)
-
+ 
             all_embeddings.append(batch_embeddings)
-
+ 
         # Concatenate all batched embeddings into one tensor
         return torch.cat(all_embeddings, dim=0)
     
@@ -210,15 +212,17 @@ class SummarizerAlbert:
         return similarity_matrix
 
     def extractive_summary(self, sentences, num_sentences=3):
+        device = next(self.model.parameters()).device
         if len(sentences) < num_sentences:
             print(f"Warning: Number of sentences ({len(sentences)}) is less than requested ({num_sentences}). Returning all sentences.")
             return sentences
         
         sentence_embeddings = self.get_embeddings(sentences)
+        sentence_embeddings = [embedding.to(device) for embedding in sentence_embeddings]
         from torch.nn.utils.rnn import pad_sequence
         sentence_embeddings =  pad_sequence(sentence_embeddings, batch_first=True, padding_value=0) # Convert list to tensor
         similarity_matrix = self.calculate_similarity_matrix(sentence_embeddings)
-
+ 
         # Build graph and compute PageRank scores
         graph = nx.from_numpy_array(similarity_matrix)
         scores = nx.pagerank(graph, max_iter=100)
@@ -226,6 +230,53 @@ class SummarizerAlbert:
         # Select top-ranked sentences
         selected_indices = sorted(range(len(scores)), key=lambda i: scores[i], reverse=True)[:num_sentences]
         return [sentences[i] for i in sorted(selected_indices)]
+    #generate_extractive
+    def generative_extractive(self, article_text):
+        """
+        Generate extractive summary with formatted output using regex pattern.
+        Returns sentences in format: [câu 1]. [câu 2]. [câu 3]. etc.
+        """
+        prompt = f"""
+        Bạn là một chuyên gia tóm tắt văn bản tiếng Việt. Hãy thực hiện các yêu cầu sau:
+
+        1. Trích xuất 5 câu QUAN TRỌNG NHẤT từ văn bản được cung cấp
+        2. Mỗi câu phải là trích dẫn nguyên văn, KHÔNG ĐƯỢC VIẾT LẠI hay DIỄN GIẢI
+        3. Trả về kết quả theo định dạng CHÍNH XÁC như sau:
+        [câu 1]. [câu 2]. [câu 3]. [câu 4]. [câu 5].
+        
+        Quy tắc bắt buộc:
+        - Chỉ trích xuất câu nguyên văn
+        - Mỗi câu đặt trong dấu ngoặc vuông []
+        - Các câu phân cách bằng dấu chấm và khoảng trắng
+        - KHÔNG thêm bất kỳ chú thích hay nội dung nào khác
+        - KHÔNG đánh số thứ tự câu
+        - KHÔNG thêm ký tự đặc biệt hay định dạng khác
+
+        Văn bản cần tóm tắt:
+        {article_text}
+
+        Trả về kết quả theo đúng định dạng yêu cầu.
+        """
+
+        try:
+            response = self.abstractive_model.generate_content(prompt)
+            if not getattr(response, "text", None):
+                print("⚠️ Warning: Empty response from AI model.")
+                return ""
+
+            # Clean up the response to match required format
+            summary = response.text.strip()
+            
+            # Use regex to extract and format sentences
+            import re
+            sentences = re.findall(r'\[(.*?)\]', summary)
+            formatted_response = ". ".join(f"[{sentence.strip()}]" for sentence in sentences)
+            
+            return formatted_response
+
+        except Exception as e:
+            print(f"❌ Error in generative_extractive: {e}")
+            return ""
     
     def abstractive_summarize(self, extractive_sentences: list, word_limit: int = 150):
         """
@@ -305,7 +356,7 @@ class SummarizerAlbert:
         }
         return article_sum  # Return structured dictionary (not string)
 
-    def multi_source_extractive(self, articles, max_workers=4):
+    def multi_source_extractive(self, articles, max_workers=4): 
         """Extract key sentences from multiple articles using parallel processing."""
 
         if not articles:
@@ -323,6 +374,42 @@ class SummarizerAlbert:
                     print(f"Error processing article: {e}")
         
         return results
+
+    def gen_multi_source_extractive(self, articles, max_sentences_per_source=10):
+        """
+        Generate extractive summaries from multiple articles with source identification.
+        
+        Args:
+            articles (list[dict]): List of articles with main_text field
+            max_sentences_per_source (int): Maximum sentences to extract per article
+            
+        Returns:
+            list[str]: List of extractive sentences with source identifiers
+        """
+        if not articles:
+            return []
+
+        extractive_results = []
+        
+        # Process each article with source identification
+        for idx, article in enumerate(articles, 1):
+            try:
+                # Preprocess and extract sentences
+                sentences = (article['main_text'])
+                if sentences:
+                    extracted_sentences = self.generative_extractive(sentences)
+                    
+                    # Add source identifier
+                    extractive_results.append(f"Title : {article['title']}")
+                    extractive_results.append(f"url : {article['url']}")
+                    print(f"extracted_sentences: {extracted_sentences}")
+                    extractive_results.append(extracted_sentences)
+                    
+            except Exception as e:
+                print(f"Error processing article {idx}: {e}")
+                continue
+
+        return extractive_results
 
 
 
@@ -343,16 +430,37 @@ class SummarizerAlbert:
         if not articles:
             return "No articles provided for synthesis."
 
+        print(f"Here are the article's lists: {articles}")
         all_extractive_sentences = self.multi_source_extractive(articles)
+        # Check if None or empty
+        if not all_extractive_sentences:  # This handles both None and empty list cases
+            print("No extractive sentences found, falling back to generative extraction...")
+            all_extractive_sentences = self.gen_multi_source_extractive(articles)
+            if not all_extractive_sentences:  # Double check the fallback result
+                return "Could not generate summary: no valid content found in articles."
     
+            print(f"Here are all extractive sentences {all_extractive_sentences}")
+            """
+            list_of_main_text = []
+            for all article in article:
+                text = "Nguồn " + article_order + article["main_text"]
+                list_of_main_text.push[text]
+            
+            prompt = "Summary command + list_of_main_text (defined which source order & value) + listy format"
+
+            -> LLM (strictly formated)
+            Post-processing => into list ['Nguồn 1:', "extrc 1", "extrct_k", "Nguồn 2:", "extrc 1", ... "Nguồn n: ", "extrc 1", ...] 
+            # for all the source -> take 10 extract sentence
+            
+            """
 
         # Step 2: Generate a cohesive abstractive summary in a single API call
         prompt = f"""
         Bạn là một trợ lý AI chuyên tóm tắt nội dung từ nhiều bài báo.
         Dưới đây là các câu then chốt được trích xuất từ nhiều bài viết khác nhau - cùng với Meta-Data của chúng:
-
+        [Dữ liệu đầu vào]
         ---
-        {" ".join(f"- {sentence}" for sentence in all_extractive_sentences)}
+         {" ".join(f"- {sentence}" for sentence in all_extractive_sentences)}
         ---
 
                 
@@ -361,28 +469,35 @@ class SummarizerAlbert:
         2. Trình bày súc tích, dễ hiểu, giữ nguyên ý nghĩa chính.  
         3. Không lặp lại nguyên văn, diễn đạt tự nhiên.  
         4. Giới hạn độ dài tối đa khoảng {word_limit} từ.  
-        5. Không được thêm bất cứ phản hồi hay biểu cảm nào dư thừa, chỉ được có tóm tắt.  
-        6. Sử dụng trích dẫn trong văn bản theo định dạng APA 7th: [Tên tác giả, Năm].  
-        - **Ví dụ:** ([Smith, 2020]) hoặc ([Nguyen & Tran, 2023]).  
-        7. Chỉ tóm tắt, không thêm ý kiến chủ quan hay bình luận.  
-
-        **Ví dụ về định dạng mong muốn:** *(CHỈ ĐƯỢC THAM KHẢO)*
+        5. Không được thêm bất cứ phản hồi hay biểu cảm nào dư thừa, chỉ được có tóm tắt.    
+        6. Chỉ tóm tắt, không thêm ý kiến chủ quan hay bình luận.  
+        7. Với mỗi block trong key "reference" 
+                - Key là số thứ tự bài báo (1, 2, 3...)
+                - Mỗi bài có 2 trường: "title" và "url"
+        8. Hãy trích xuất từ [Dữ liệu đầu vào] như "title" và "url" để trả ra kết quả
+        9. Không được tạo ra url và title ảo từ [Dữ liệu đầu vào]
+        10. Đối với trường "synthesis_paragraph" phải đề cập đến nguồn của bằng chứng và [số thứ tự của nguồn trong "reference" tương ứng]
+        **Ví dụ phù hợp của định dạng "key": "value" của json, nếu có dấu ngoặc kép (") trong nội dung của value hãy đổi thành dấu ngoặc đơn (') để đúng định dạng json, cấm dùng dấu ngoặc kép (") khi viết phần value:**
 
         {{
             "synthesis_paragraph": "Lorem ipsum dolor sit amet, consectetur adipiscing elit. [1] Curabitur feugiat ex at quam malesuada sagittis. Aliquam euismod eros tempor magna iaculis placerat. Nam vel faucibus nisl, et convallis nibh. Etiam tempor pulvinar scelerisque. Integer non felis quis risus varius congue nec et nisl [2]. Donec pretium sem eget luctus iaculis. Vestibulum eget condimentum lorem, vitae elementum dui. Vestibulum gravida a magna id imperdiet. Proin lacinia urna a volutpat convallis.",
             "reference": {{
                 "1": {{
-                    "title": "Author & Coauthor, 2021",
-                    "url": "https://example.com"
+                    "title": "Mất ngủ dễ gây chết người - Báo VnExpress Sức khỏe",
+                    "url": "https://vnexpress.net/mat-ngu-de-gay-chet-nguoi-3779066.html"
                 }},
                 "2": {{
-                    "title": "Researcher, 2023",
-                    "url": "https://example.com"
+                    "title": "6 thói quen 'chết người' dễ xảy ra ở nhà vệ sinh - Báo VnExpress Đời sống",
+                    "url": "https://vnexpress.net/6-thoi-quen-chet-nguoi-de-xay-ra-o-nha-ve-sinh-4395632.html"
+                }}
+                "3": {{
+                    "title": "Hàng trăm người vạ vật sau vụ cháy chung cư làm 13 người chết - Báo VnExpress",
+                    "url": "https://vnexpress.net/6-thoi-quen-chet-nguoi-de-xay-ra-o-nha-ve-sinh-4395632.html"
                 }}
             }}
         }}
 
-        **HẾT VÍ DỤ**
+        **HẾT VÍ DỤ, không để nội dung ví dụ ảnh hưởng đến đánh giá**
 
         Hãy viết đoạn tóm tắt chính xác và khách quan:
         """

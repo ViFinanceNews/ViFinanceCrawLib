@@ -363,6 +363,7 @@ class AQD:
 
                 if inserted_id: # article_id - Only delete Redis key if DB operation successful
                     session_exists = self.redis_client.exists(session_key)
+
                     
                     if not session_exists: 
                         ttl = self.redis_client.ttl(key)

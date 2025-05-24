@@ -203,7 +203,34 @@ class ArticleFactCheckUtility():
             - **A1** là thông tin đáng tin cậy nhất, có nguồn mạnh và đã được xác minh.  
             - **E5** là thông tin đáng tin cậy kém nhất, có nguồn yếu và không thể đánh giá.  
 
-            
+            ### ** DANH SÁCH Ý nghĩa của các tổ hợp đánh giá [PHẢI DÙNG ĐÚNG CHÍNH XÁC CÚ PHÁP NHƯ GỐC]**  
+            A1: Hoàn toàn đáng tin cậy & Đã được xác minh  
+            A2: Hoàn toàn đáng tin cậy & Có khả năng đúng  
+            A3: Hoàn toàn đáng tin cậy & Có thể đúng  
+            A4: Hoàn toàn đáng tin cậy & Không chắc chắn  
+            A5: Hoàn toàn đáng tin cậy & Không thể đánh giá  
+            B1: Đáng tin cậy & Đã được xác minh  
+            B2: Đáng tin cậy & Có khả năng đúng  
+            B3: Đáng tin cậy & Có thể đúng  
+            B4: Đáng tin cậy & Không chắc chắn  
+            B5: Đáng tin cậy & Không thể đánh giá  
+            C1: Khá đáng tin cậy & Đã được xác minh  
+            C2: Khá đáng tin cậy & Có khả năng đúng  
+            C3: Khá đáng tin cậy & Có thể đúng  
+            C4: Khá đáng tin cậy & Không chắc chắn  
+            C5: Khá đáng tin cậy & Không thể đánh giá  
+            D1: Không đáng tin cậy & Đã được xác minh  
+            D2: Không đáng tin cậy & Có khả năng đúng  
+            D3: Không đáng tin cậy & Có thể đúng  
+            D4: Không đáng tin cậy & Không chắc chắn  
+            D5: Không đáng tin cậy & Không thể đánh giá  
+            E1: Không thể đánh giá & Đã được xác minh  
+            E2: Không thể đánh giá & Có khả năng đúng  
+            E3: Không thể đánh giá & Có thể đúng  
+            E4: Không thể đánh giá & Không chắc chắn  
+            E5: Không thể đánh giá & Không thể đánh giá  
+
+                        
 
             Mệnh đề thông tin: {statement}  
 
@@ -214,7 +241,7 @@ class ArticleFactCheckUtility():
             - Tổng Hợp Cuối Cùng: [Tóm tắt thông tin đã kiểm tra để đưa ra kết luận cuối cùng về chủ đề.]  
             - Kết luận: [Hỗ trợ/Mâu thuẫn/Trung lập]  
             - Phân tích bằng chứng: [Các dẫn chứng trên có mối liên hệ như thế nào trong việc đưa ra kết luận về vấn đề người dùng tìm hiểu]
-            - Mức độ tin cậy: [Ví dụ: A1, B3, D5] và chú thích của mức độ [ví dụ: A1 - Đáng Tin Cậy và Đã Được Xác Minh]   
+            - Mức độ tin cậy: [Ví dụ: A1, B3, D5] và chú thích của CHÍNH XÁC NHƯ DANH SÁCH Ý nghĩa của các tổ hợp đánh giá  [ví dụ: A1 - Đáng Tin Cậy & Đã Được Xác Minh]   
             - Giải thích: [Giải thích ngắn gọn về lý do của bạn, có đề cập đến nguồn bằng chứng và mức độ tin cậy của chúng.]  
             - Lời khuyên cho người dùng về cách nhìn nhận hiện tại: [Một lời khuyên ngắn gọn]  
             - Danh sách các dẫn chứng (mỗi bài báo là một string):  

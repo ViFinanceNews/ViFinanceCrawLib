@@ -230,7 +230,7 @@ class SummarizerAlbert:
         # Select top-ranked sentences
         selected_indices = sorted(range(len(scores)), key=lambda i: scores[i], reverse=True)[:num_sentences]
         return [sentences[i] for i in sorted(selected_indices)]
-    #generate_extractive
+
     def generative_extractive(self, article_text):
         """
         Generate extractive summary with formatted output using regex pattern.
@@ -338,7 +338,9 @@ class SummarizerAlbert:
             print("No content after preprocessing.")
             return "", []
         extractive_output = self.extractive_summary(sentences, num_sentences=num_sentences)
+        print(f"Extractive output:{extractive_output}")
         summary = self.abstractive_summarize(extractive_output)
+        print(f"Abstractive Output: {summary}")
         return summary
     
     def process_article(self, article):
@@ -410,8 +412,6 @@ class SummarizerAlbert:
                 continue
 
         return extractive_results
-
-
 
     def multi_article_synthesis(self, articles, word_limit=200):
         """

@@ -42,80 +42,6 @@ class QuantAnaInsAlbert:
         self._set_up_vncorenlp()
         print("Load QuantAna done !")
   
-    def load_models(self, model_root="/app/models/hub"):
-        from detoxify import Detoxify
-        from transformers import pipeline, AutoTokenizer, AutoModel, AutoModelForSequenceClassification
-        if self._models_loaded:
-            return  # Already loaded, do nothing
-        
-        using_volume = os.path.isdir(model_root) and len(os.listdir(model_root)) > 0
-        print(f"[INFO] using_volume = {using_volume}")
-
-        if not using_volume:
-            # Sentiment pipeline
-            model_name = "tabularisai/multilingual-sentiment-analysis"
-            tokenizer = AutoTokenizer.from_pretrained(model_name)
-            model = AutoModelForSequenceClassification.from_pretrained(model_name)
-            self.sentiment_pipeline = pipeline(
-                "sentiment-analysis", 
-                model=model, 
-                device=0 if self.device == "cuda" else -1,
-                tokenizer=tokenizer
-            )
-            
-            # Embedding model + tokenizer
-            self.embed_model_name = "cservan/multilingual-albert-base-cased-32k"
-            self.embed_tokenizer = AutoTokenizer.from_pretrained(self.embed_model_name)
-            self.embed_model = AutoModel.from_pretrained(self.embed_model_name).to(self.device)
-            self.toxicity_model = Detoxify(model_type="original-small")
-        else:
-            root_model_dir = model_root
-            albert_folder = self.find_model_folder("models--cservan--multilingual-albert-base-cased-32k", root_model_dir)
-            sentiment_model_folder = self.find_model_folder("models--tabularisai--multilingual-sentiment-analysis", root_model_dir)
-            if albert_folder is None or sentiment_model_folder is None:
-                raise Exception("Model folder(s) not found!")
-            self.embed_tokenizer =AutoTokenizer.from_pretrained(albert_folder)
-            self.embed_model = AutoModel.from_pretrained(albert_folder)
-
-            self.sentiment_pipeline = pipeline(
-                "sentiment-analysis", 
-                model=sentiment_model_folder, 
-                device=0 if self.device == "cuda" else -1,
-                tokenizer=sentiment_model_folder
-            )
-            toxicity_path = self.find_model_folder_checkpoint_keyword(keyword="original-albert", root_model_dir=root_model_dir)
-            if toxicity_path is not None:
-                model_name = "original-albert-0e1d6498.ckpt"
-                self.toxicity_model = Detoxify(model_type="original-small", checkpoint=toxicity_path + "/" + model_name)
-            else:
-                self.toxicity_model = Detoxify(model_type="original-small")
-        print("Sentiment Model  & Toxicity Model loaded Successfully")
-
-    def find_model_folder_checkpoint_keyword(self, keyword, root_model_dir):
-        """
-        Recursively search for the first folder that contains a checkpoint (.ckpt) file
-        whose filename includes the given keyword.
-
-        Args:
-            keyword (str): Keyword to match in the checkpoint filename
-            root_model_dir (str): Root directory to search within
-
-        Returns:
-            str or None: The full path to the matching folder, or None if not found
-        """
-        for root, dirs, files in os.walk(root_model_dir):
-            for file in files:
-                if file.endswith(".ckpt") and keyword.lower() in file.lower():
-                    return root
-        return None
-    
-    def find_model_folder(self, model_name, root_model_dir):
-        for root, dirs, files in os.walk(root_model_dir):
-            # Check if 'config.json' exists (which indicates a valid Hugging Face model folder)
-            if "config.json" in files and model_name in root:
-                return root
-        return None
-    
     def _set_up_vncorenlp(self):
         filename = "VnCoreNLP/VnCoreNLP-1.1.1.jar"
         file_path = Path.cwd() / filename
@@ -124,164 +50,66 @@ class QuantAnaInsAlbert:
             sys.exit(1)
         self.rdrsegmenter = VnCoreNLP(str(file_path), annotators="wseg", max_heap_size='-Xmx500m')
 
-    def get_embeddings(self, texts: List[str]):
-        import torch
-        """
-        Get sentence embeddings for a list of texts using a locally loaded transformer model.
-        Uses dynamic batching and mean pooling over token embeddings.
-        """
-        num_texts = len(texts)
+    def load_models(self, model_root="/app/models/hub"):
+        from detoxify import Detoxify
+        from transformers import pipeline, AutoTokenizer, AutoModel, AutoModelForSequenceClassification
+        print(f" check if the model been loaded{self._models_loaded}")
+        if self._models_loaded:
+            return  # Already loaded, do nothing
+        
+        self.device = "cpu"
+        using_volume = os.path.isdir(model_root) and len(os.listdir(model_root)) > 0
+        print(f"[INFO] using_volume = {using_volume}")
 
-        # Dynamically choose a reasonable even batch size
-        if num_texts <= 2:
-            batch_size = num_texts
+        if not using_volume:
+            # Sentiment pipeline
+            model_name = "tabularisai/multilingual-sentiment-analysis"
+            tokenizer = AutoTokenizer.from_pretrained(model_name)
+            model = AutoModelForSequenceClassification.from_pretrained(model_name).to("cpu")
+            self.sentiment_pipeline = pipeline(
+                "sentiment-analysis", 
+                model=model, 
+                device=-1, # Force Using CPU
+                tokenizer=tokenizer
+            )
+            
+            # Embedding model + tokenizer
+            self.embed_model_name = "cservan/multilingual-albert-base-cased-32k"
+            self.embed_tokenizer = AutoTokenizer.from_pretrained(self.embed_model_name)
+            self.embed_model = AutoModel.from_pretrained(self.embed_model_name).to("cpu")
+            self.toxicity_model = Detoxify(model_type="original-small", device = "cpu")
+        
         else:
-            batch_size = max(2, (num_texts // 4) * 2)  # Ensure it's even
+            root_model_dir = model_root
+            albert_folder = self.find_model_folder("models--cservan--multilingual-albert-base-cased-32k", root_model_dir)
+            sentiment_model_folder = self.find_model_folder("models--tabularisai--multilingual-sentiment-analysis", root_model_dir)
+            
+            if albert_folder is None or sentiment_model_folder is None:
+                raise Exception("Model folder(s) not found!")
+            self.embed_tokenizer =AutoTokenizer.from_pretrained(albert_folder)
+            self.embed_model = AutoModel.from_pretrained(albert_folder).to("cpu")
 
-        all_embeddings = []
-
-        for i in range(0, num_texts, batch_size):
-            batch = texts[i:i + batch_size]
-
-            # Tokenize the batch with padding and truncation
-            inputs = self.embed_tokenizer(batch, return_tensors="pt", padding=True, truncation=True)
-
-            # Forward pass (no gradients needed)
-            with torch.no_grad():
-                outputs = self.embed_model(**inputs)
-
-            # Mean pooling over the token dimension (dim=1)
-            batch_embeddings = outputs.last_hidden_state.mean(dim=1)  # shape: (batch_size, hidden_dim)
-
-            all_embeddings.append(batch_embeddings)
-
-        # Concatenate all batched embeddings into one tensor
-        return torch.cat(all_embeddings, dim=0)
-    
-    def compute_semantic_similarity(self, article1: str, article2: str) -> float:
-        """Calculate Semantic Similarity between 2 articles using ALBERT embeddings"""
-        article_list = [article1, article2]
-
-        # Step 1: Get embeddings locally
-        embeddings = self.get_embeddings(article_list)  # shape: [2, hidden_dim]
-
-        # Step 2: Compute cosine similarity
-        similarity = cosine_similarity([embeddings[0]], [embeddings[1]])[0][0]
-
-        return float(similarity)
-
-    def compute_multi_semantic_similarity(self, source_articles, query_article=None, display_table=False):
-        """
-        Calculate Semantic Similarity:
-        - Between query_article and each source article (if provided)
-        - Pairwise similarity between source articles
-
-        Args:
-            source_articles (List[str]): List of source article strings
-            query_article (str, optional): Query article string. Default is None.
-            display_table (bool): Whether to print similarity tables
-
-        Returns:
-            dict: {
-                'query_to_sources': List[float] or None,
-                'intersource': List[List[float]]
-            }
-        """
-        try:
-            # Step 1: Prepare text batch
-            all_articles = source_articles.copy()
-            if query_article:
-                all_articles.insert(0, query_article)
-
-            # Step 2: Generate embeddings locally using Hugging Face
-            embeddings = self.get_embeddings(all_articles)  # List[np.ndarray], each of shape (hidden_dim,)
-
-            # Step 3: Process similarity scores
-            query_to_sources = None
-            intersource_start_idx = 0
-
-            if query_article:
-                query_embedding = embeddings[0].reshape(1, -1)  # shape: (1, dim)
-                source_embeddings = [e.reshape(1, -1) for e in embeddings[1:]]
-                query_to_sources = [
-                    float(cosine_similarity(query_embedding, src)[0][0])
-                    for src in source_embeddings
-                ]
-                intersource_start_idx = 1
+            self.sentiment_pipeline = pipeline(
+                "sentiment-analysis", 
+                model=sentiment_model_folder, 
+                device= -1, # Force CPU
+                tokenizer=sentiment_model_folder
+            )
+            toxicity_path = self.find_model_folder_checkpoint_keyword(keyword="original-albert", root_model_dir=root_model_dir)
+            if toxicity_path is not None:
+                model_name = "original-albert-0e1d6498.ckpt"
+                self.toxicity_model = Detoxify(model_type="original-small", checkpoint=toxicity_path + "/" + model_name, device="cpu")
             else:
-                source_embeddings = [e.reshape(1, -1) for e in embeddings]
-
-            # Step 4: Pairwise source-source similarity matrix
-            intersource = []
-            for i, emb1 in enumerate(source_embeddings):
-                row = []
-                for j, emb2 in enumerate(source_embeddings):
-                    sim = float(cosine_similarity(emb1, emb2)[0][0])
-                    row.append(sim)
-                intersource.append(row)
-
-            # Step 5: Optional Display
-            if display_table:
-                if query_article:
-                    query_df = pd.DataFrame({
-                        'Source': [f'Source_{i+1}' for i in range(len(query_to_sources))],
-                        'Matching_to_Query': query_to_sources
-                    })
-                    print("=== Query to Sources Similarity ===")
-                    print(query_df.round(3))
-                    print("\n")
-
-                labels = [f"Source_{i+1}" for i in range(len(source_embeddings))]
-                matrix_df = pd.DataFrame(intersource, index=labels, columns=labels)
-                print("=== Intersource Similarity Matrix ===")
-                print(matrix_df.round(3))
-
-            return {
-                'query_to_sources': query_to_sources,
-                'intersource': intersource
-            }
-
-        except Exception as e:
-            print(f"[ERROR] Local Semantic Similarity Failed: {str(e)}")
-            return None
-    
-    def generative_extractive(self, article_text):
-        prompt = f"""
-        Bạn là một chuyên gia tóm tắt trích xuất. Hãy **trích nguyên văn 5 câu quan trọng nhất** từ bài viết sau để nắm bắt nội dung cốt lõi và trình bày dưới dạng **một đoạn văn súc tích**.
-
-        ### **Yêu cầu:**  
-        - **Phải trích nguyên văn** từ bài viết, **không viết lại, không diễn giải**.  
-        - Các câu phải **đủ ý, quan trọng, và có ý nghĩa độc lập**.  
-        - Sắp xếp các câu một cách hợp lý để đảm bảo mạch nội dung tự nhiên.  
-        - Nếu bài viết có ít hơn 10 câu, hãy trích xuất toàn bộ các câu quan trọng nhất có thể.  
-        - **Không thêm bất kỳ phản hồi hoặc nội dung thừa thãi nào**, chỉ xuất ra đoạn văn chứa các câu trích xuất.
-
-        ### **Bài viết:**  
-        {article_text}
-
-        ### **Định dạng đầu ra (một đoạn văn chứa 10 câu nguyên văn):**  
-        "[Câu 1] [Câu 2] [Câu 3] … [Câu 10]"
-        """
-
-        try:
-            response = self.translator_model.generate_content(prompt)
-            if not getattr(response, "text", None):
-                print("⚠️ Warning: Empty response from AI model.")
-                return ""
-
-            return response.text
-
-        except Exception as e:
-            print(f"❌ Error in generative_extractive: {e}")
-            return ""
+                self.toxicity_model = Detoxify(model_type="original-small", device="cpu")
+        print("Sentiment Model  & Toxicity Model loaded Successfully")
 
     def sentiment_analysis(self, article_text):
-        self.load_models(model_root="/app/models/hub")
+        self.load_models()
         article_text = re.sub(r"\[Câu \d+\]\s*", "", article_text)
         print(article_text)
         try:
             result = self.sentiment_pipeline(article_text)[0]  # Only take top label
-
+            print(f"result: {result}")
             sentiment_label = result['label']  # e.g., 'NEGATIVE', 'POSITIVE', 'NEUTRAL'
             raw_score = result['score']
             
@@ -372,13 +200,6 @@ class QuantAnaInsAlbert:
         """
         return " ".join(tokens).replace("_", "")
 
-    # def normalize_result(self, value):
-    #     #Check if the value is a numpy float type
-    #     if isinstance(value, np.float32) or isinstance(value, np.float64):
-    #         return float(value) * 100  # Return the score
-    #     else:
-    #         return float(value) * 100  # Return the raw value as a string
-
     def normalize_result(self, value):
         """
         Convert a float score in range [0.0, 1.0] to a discrete score in range [1, 10].
@@ -400,10 +221,14 @@ class QuantAnaInsAlbert:
         self.load_models()
         try:
             tokenized_text = self.rdrsegmenter.tokenize(article_text)
+            print(f"tokenized_text:{tokenized_text}")
             pre_processed_sentences = self.combine_tokens(tokenized_text[0])
-            translation = self.translation_from_Vie_to_Eng(pre_processed_sentences)
             
+            translation = self.translation_from_Vie_to_Eng(pre_processed_sentences)
+            print(f"Translation:{translation}")
             toxicity_score = self.toxicity_model.predict(translation)
+            print(f"toxicity_score{toxicity_score}")
+            
             return {
                 "Tính Độc Hại": self.normalize_result(toxicity_score["toxicity"]),
                 "Tính Xúc Phạm": self.normalize_result(toxicity_score["insult"]),
@@ -448,3 +273,33 @@ class QuantAnaInsAlbert:
             print(f"❌ Error in obsence_check: {e}")
             return False
    
+    def generative_extractive(self, article_text):
+        prompt = f"""
+        Bạn là một chuyên gia tóm tắt trích xuất. Hãy **trích nguyên văn 5 câu quan trọng nhất** từ bài viết sau để nắm bắt nội dung cốt lõi và trình bày dưới dạng **một đoạn văn súc tích**.
+
+        ### **Yêu cầu:**  
+        - **Phải trích nguyên văn** từ bài viết, **không viết lại, không diễn giải**.  
+        - Các câu phải **đủ ý, quan trọng, và có ý nghĩa độc lập**.  
+        - Sắp xếp các câu một cách hợp lý để đảm bảo mạch nội dung tự nhiên.  
+        - Nếu bài viết có ít hơn 10 câu, hãy trích xuất toàn bộ các câu quan trọng nhất có thể.  
+        - **Không thêm bất kỳ phản hồi hoặc nội dung thừa thãi nào**, chỉ xuất ra đoạn văn chứa các câu trích xuất.
+
+        ### **Bài viết:**  
+        {article_text}
+
+        ### **Định dạng đầu ra (một đoạn văn chứa 10 câu nguyên văn):**  
+        "[Câu 1] [Câu 2] [Câu 3] … [Câu 10]"
+        """
+
+        try:
+            response = self.translator_model.generate_content(prompt)
+            if not getattr(response, "text", None):
+                print("⚠️ Warning: Empty response from AI model.")
+                return ""
+
+            return response.text
+
+        except Exception as e:
+            print(f"❌ Error in generative_extractive: {e}")
+            return ""
+

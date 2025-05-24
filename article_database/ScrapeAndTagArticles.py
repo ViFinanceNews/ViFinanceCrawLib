@@ -16,6 +16,7 @@ class ScrapeAndTagArticles:
             ssl=True
         )
         self.utility = ArticleFactCheckUtility()
+
     
     def search_and_scrape(self, query):
         # Step 1: Scrape articles
@@ -26,49 +27,66 @@ class ScrapeAndTagArticles:
         response_result = list()
         
 
-        # Step 2: Assign tags and store in Redis
+        # Step 2: Process and cache each article
         for article, tags, brief_des in zip(articles, tag_batches, brief_des_batches):
+            url = article.get("url")
+            if not url:
+                print("⚠️ Skipping article with missing URL:", article)
+                continue
+
             try:
-                url = article.get("url")
-                if not url:
-                    print("⚠️ Skipping article with missing URL:", article)
-                    continue
+                upvotes = int(article.get("upvotes", 0))
+            except (TypeError, ValueError):
+                print(f"⚠️ Invalid upvotes value for article {url}: {article.get('upvotes')}")
+                upvotes = 0
 
-                # Handle upvotes conversion safely
-                try:
-                    upvotes = int(article.get("upvotes"))
-                except (TypeError, ValueError):
-                    print("⚠️ Invalid upvotes value:", article.get("upvotes"))
-                    upvotes = 0
+            article_data = {
+                "author": article.get("author", "Unknown"),
+                "title": article.get("title", "No Title"),
+                "url": url,
+                "image_url": article.get("image_url"),
+                "date_publish": article.get("date_publish"),
+                "main_text": article.get("main_text"),
+                "tags": tags,
+                "upvotes": upvotes,
+                "brief_des_batches": brief_des
+            }
 
-                article_data = {
-                    "author": article.get("author", "Unknown"),
-                    "title": article.get("title", "No Title"),
-                    "url": url,
-                    "image_url": article.get("image_url"),
-                    "date_publish": article.get("date_publish"),
-                    "main_text": article.get("main_text"),
-                    "tags": tags,
-                    "upvotes": upvotes,
-                    "brief_des_batches": brief_des
-                }
+            try:
+                cached = self.redis_client.get(url)
+                if cached:
+                    try:
+                        existing_article = json.loads(cached.decode("utf-8"))
+                        prev_upvotes = existing_article.get("upvotes", 0)
+                        if isinstance(prev_upvotes, int):
+                            total_upvotes = prev_upvotes + upvotes
+                        else:
+                            total_upvotes = prev_upvotes
+                        existing_article["upvotes"] = total_upvotes
 
-                try:
-                    self.redis_client.set(url, json.dumps(article_data), ex=3600)
-                except Exception as re:
-                    print(f"⚠️ Redis error for article {url}: {re}")
+                        # Store updated article
+                        ok = self.redis_client.set(url, json.dumps(existing_article), ex=3600)
+                        if not ok:
+                            print(f"❌ Failed to update Redis for existing article: {url}")
 
-                try:
+                        instance_res = existing_article.copy()
+                        instance_res.pop("main_text", None)
+                        response_result.append(instance_res)
+                    except Exception as decode_err:
+                        print(f"⚠️ Error decoding cached article at {url}: {decode_err}")
+                else:
+                    # Store new article
+                    ok = self.redis_client.set(url, json.dumps(article_data), ex=3600)
+                    if not ok:
+                        print(f"❌ Failed to write new article to Redis: {url}")
+
                     instance_res = article_data.copy()
                     instance_res.pop("main_text", None)
                     response_result.append(instance_res)
-                except Exception as ap:
-                    print(f"⚠️ Append result failed for article {url}: {ap}")
 
-            except Exception as e:
-                print(f"❌ Failed to process article: {article.get('title', 'Unknown')} — Error: {e}")
+            except Exception as redis_error:
+                print(f"⚠️ Redis operation failed for article {url}: {redis_error}")
                 continue
-
 
         return response_result
     

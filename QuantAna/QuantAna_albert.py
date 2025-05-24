@@ -283,11 +283,15 @@ class QuantAnaInsAlbert:
             result = self.sentiment_pipeline(article_text)[0]  # Only take top label
 
             sentiment_label = result['label']  # e.g., 'NEGATIVE', 'POSITIVE', 'NEUTRAL'
-            sentiment_score = result['score']
+            raw_score = result['score']
+            
+            # Normalize score to 1–10
+            discrete_score = int(round(raw_score * 9)) + 1
+            discrete_score = min(max(discrete_score, 1), 10)  # Ensure it's in [1, 10]
 
             return {
-                "sentiment_label": sentiment_label,
-                "sentiment_score": sentiment_score
+                "sentiment_label": sentiment_label,  # e.g., 'POSITIVE', 'NEGATIVE', 'NEUTRAL'
+                "sentiment_score": discrete_score
             }
 
         except Exception as e:
